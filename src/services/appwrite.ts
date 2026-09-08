@@ -34,6 +34,29 @@ export const getDefaultAppwriteConfig = (): AppwriteConfig => {
   return DEFAULT_CONFIG;
 };
 
+export const normalizeAppwriteId = (id: string, prefix: string = 'doc'): string => {
+  if (!id) {
+    return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}`;
+  }
+  let cleaned = id.replace(/[^a-zA-Z0-9._-]/g, '_');
+  if (/^[^a-zA-Z0-9]/.test(cleaned)) {
+    cleaned = prefix + '_' + cleaned;
+  }
+  if (cleaned.length > 36) {
+    let hash = 0;
+    for (let i = 0; i < id.length; i++) {
+      hash = ((hash << 5) - hash) + id.charCodeAt(i);
+      hash |= 0;
+    }
+    const hashStr = Math.abs(hash).toString(36);
+    cleaned = cleaned.substring(0, 20) + '_' + hashStr;
+    if (cleaned.length > 36) {
+      cleaned = cleaned.substring(0, 36);
+    }
+  }
+  return cleaned;
+};
+
 export const COLLECTIONS = {
   STUDENTS: 'students',
   LESSONS: 'lessons',
@@ -105,6 +128,7 @@ class AppwriteService {
   async saveStudentToAppwrite(student: Student): Promise<boolean> {
     if (!this.isConfigured()) return false;
     try {
+      const docId = normalizeAppwriteId(student.id, 'stu');
       const payload = {
         name: student.name,
         phone: student.phone || '',
@@ -125,7 +149,7 @@ class AppwriteService {
         await this.databases.updateDocument(
           this.config.databaseId,
           COLLECTIONS.STUDENTS,
-          student.id,
+          docId,
           payload
         );
       } catch (err: any) {
@@ -133,7 +157,7 @@ class AppwriteService {
           await this.databases.createDocument(
             this.config.databaseId,
             COLLECTIONS.STUDENTS,
-            student.id,
+            docId,
             payload
           );
         } else {
@@ -150,10 +174,11 @@ class AppwriteService {
   async deleteStudentFromAppwrite(id: string): Promise<boolean> {
     if (!this.isConfigured()) return false;
     try {
+      const docId = normalizeAppwriteId(id, 'stu');
       await this.databases.deleteDocument(
         this.config.databaseId,
         COLLECTIONS.STUDENTS,
-        id
+        docId
       );
       return true;
     } catch (e) {
@@ -197,6 +222,7 @@ class AppwriteService {
   async saveLessonToAppwrite(lesson: Lesson): Promise<boolean> {
     if (!this.isConfigured()) return false;
     try {
+      const docId = normalizeAppwriteId(lesson.id, 'lsn');
       const payload = {
         studentId: lesson.studentId,
         date: lesson.date,
@@ -214,7 +240,7 @@ class AppwriteService {
         await this.databases.updateDocument(
           this.config.databaseId,
           COLLECTIONS.LESSONS,
-          lesson.id,
+          docId,
           payload
         );
       } catch (err: any) {
@@ -222,7 +248,7 @@ class AppwriteService {
           await this.databases.createDocument(
             this.config.databaseId,
             COLLECTIONS.LESSONS,
-            lesson.id,
+            docId,
             payload
           );
         } else {
@@ -239,10 +265,11 @@ class AppwriteService {
   async deleteLessonFromAppwrite(id: string): Promise<boolean> {
     if (!this.isConfigured()) return false;
     try {
+      const docId = normalizeAppwriteId(id, 'lsn');
       await this.databases.deleteDocument(
         this.config.databaseId,
         COLLECTIONS.LESSONS,
-        id
+        docId
       );
       return true;
     } catch (e) {
@@ -415,6 +442,24 @@ class AppwriteService {
       if (ok) count++;
     }
     return count;
+  }
+
+  // --- REALTIME SUBSCRIPTION ---
+  subscribeToChanges(onUpdate: () => void): () => void {
+    if (!this.isConfigured()) return () => {};
+    try {
+      const channels = [
+        `databases.${this.config.databaseId}.collections.${COLLECTIONS.STUDENTS}.documents`,
+        `databases.${this.config.databaseId}.collections.${COLLECTIONS.LESSONS}.documents`
+      ];
+      const unsubscribe = this.client.subscribe(channels, () => {
+        onUpdate();
+      });
+      return unsubscribe;
+    } catch (e) {
+      console.warn('[Appwrite] Realtime subscription error:', e);
+      return () => {};
+    }
   }
 }
 

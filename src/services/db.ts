@@ -7,7 +7,7 @@ import {
   FinanceRecord, 
   TeacherSettings 
 } from '../types';
-import { appwriteService } from './appwrite';
+import { appwriteService, normalizeAppwriteId } from './appwrite';
 
 const STORAGE_KEYS = {
   STUDENTS: 'mscarelli_students_v3',
@@ -41,40 +41,45 @@ class DatabaseService {
   }
 
   saveStudent(student: Student): Student[] {
+    const normalizedStudent: Student = {
+      ...student,
+      id: normalizeAppwriteId(student.id, 'stu')
+    };
     const students = this.getStudents();
-    const index = students.findIndex(s => s.id === student.id);
+    const index = students.findIndex(s => s.id === student.id || s.id === normalizedStudent.id);
     let updated: Student[];
     if (index >= 0) {
       updated = [...students];
-      updated[index] = student;
+      updated[index] = normalizedStudent;
     } else {
-      updated = [student, ...students];
+      updated = [normalizedStudent, ...students];
     }
     localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(updated));
 
     // Persist to Appwrite Database asynchronously
-    appwriteService.saveStudentToAppwrite(student).catch(err => {
+    appwriteService.saveStudentToAppwrite(normalizedStudent).catch(err => {
       console.warn('[Appwrite Sync Error]', err);
     });
 
     // Se o aluno possui recorrência ativa, gera automaticamente as próximas aulas do mês corrente
-    if (student.isActive && student.hasRecurringSchedule && student.recurringSlots && student.recurringSlots.length > 0) {
-      this.generateUpcomingLessonsForStudent(student);
+    if (normalizedStudent.isActive && normalizedStudent.hasRecurringSchedule && normalizedStudent.recurringSlots && normalizedStudent.recurringSlots.length > 0) {
+      this.generateUpcomingLessonsForStudent(normalizedStudent);
     }
 
     return updated;
   }
 
   deleteStudent(id: string): Student[] {
-    const students = this.getStudents().filter(s => s.id !== id);
+    const normId = normalizeAppwriteId(id, 'stu');
+    const students = this.getStudents().filter(s => s.id !== id && s.id !== normId);
     localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(students));
     
     // Clean associated lessons
-    const lessons = this.getLessons().filter(l => l.studentId !== id);
+    const lessons = this.getLessons().filter(l => l.studentId !== id && l.studentId !== normId);
     localStorage.setItem(STORAGE_KEYS.LESSONS, JSON.stringify(lessons));
     
     // Delete from Appwrite Database
-    appwriteService.deleteStudentFromAppwrite(id).catch(err => {
+    appwriteService.deleteStudentFromAppwrite(normId).catch(err => {
       console.warn('[Appwrite Sync Error]', err);
     });
 
@@ -93,19 +98,23 @@ class DatabaseService {
   }
 
   saveLesson(lesson: Lesson): Lesson[] {
+    const normalizedLesson: Lesson = {
+      ...lesson,
+      id: normalizeAppwriteId(lesson.id, 'lsn')
+    };
     const lessons = this.getLessons();
-    const index = lessons.findIndex(l => l.id === lesson.id);
+    const index = lessons.findIndex(l => l.id === lesson.id || l.id === normalizedLesson.id);
     let updated: Lesson[];
     if (index >= 0) {
       updated = [...lessons];
-      updated[index] = lesson;
+      updated[index] = normalizedLesson;
     } else {
-      updated = [lesson, ...lessons];
+      updated = [normalizedLesson, ...lessons];
     }
     localStorage.setItem(STORAGE_KEYS.LESSONS, JSON.stringify(updated));
 
     // Persist to Appwrite Database
-    appwriteService.saveLessonToAppwrite(lesson).catch(err => {
+    appwriteService.saveLessonToAppwrite(normalizedLesson).catch(err => {
       console.warn('[Appwrite Sync Error]', err);
     });
 
@@ -113,11 +122,12 @@ class DatabaseService {
   }
 
   deleteLesson(id: string): Lesson[] {
-    const lessons = this.getLessons().filter(l => l.id !== id);
+    const normId = normalizeAppwriteId(id, 'lsn');
+    const lessons = this.getLessons().filter(l => l.id !== id && l.id !== normId);
     localStorage.setItem(STORAGE_KEYS.LESSONS, JSON.stringify(lessons));
 
     // Delete from Appwrite Database
-    appwriteService.deleteLessonFromAppwrite(id).catch(err => {
+    appwriteService.deleteLessonFromAppwrite(normId).catch(err => {
       console.warn('[Appwrite Sync Error]', err);
     });
 
@@ -168,8 +178,9 @@ class DatabaseService {
         );
 
         if (!alreadyExists) {
+          const rawId = `lsn_${student.id.slice(-6)}_${lessonDate.getTime().toString(36)}`;
           newLessons.push({
-            id: `lesson-rec-${student.id}-${lessonDate.getTime()}`,
+            id: normalizeAppwriteId(rawId, 'lsn'),
             studentId: student.id,
             date: dateISO,
             durationMinutes: slot.durationMinutes || 60,
@@ -185,6 +196,10 @@ class DatabaseService {
     if (newLessons.length > 0) {
       const updatedLessons = [...newLessons, ...currentLessons];
       localStorage.setItem(STORAGE_KEYS.LESSONS, JSON.stringify(updatedLessons));
+      // Push generated lessons to Appwrite
+      appwriteService.pushLessonsToAppwrite(newLessons).catch(err => {
+        console.warn('[Appwrite Sync Error]', err);
+      });
     }
 
     return newLessons.length;
@@ -230,8 +245,9 @@ class DatabaseService {
             existingCount++;
           } else {
             createdCount++;
+            const rawId = `lsn_${student.id.slice(-6)}_${lessonDate.getTime().toString(36)}`;
             newLessons.push({
-              id: `lesson-rec-${student.id}-${lessonDate.getTime()}`,
+              id: normalizeAppwriteId(rawId, 'lsn'),
               studentId: student.id,
               date: dateISO,
               durationMinutes: slot.durationMinutes || 60,
@@ -248,6 +264,10 @@ class DatabaseService {
     if (newLessons.length > 0) {
       const updatedLessons = [...newLessons, ...currentLessons];
       localStorage.setItem(STORAGE_KEYS.LESSONS, JSON.stringify(updatedLessons));
+      // Push generated lessons to Appwrite
+      appwriteService.pushLessonsToAppwrite(newLessons).catch(err => {
+        console.warn('[Appwrite Sync Error]', err);
+      });
     }
 
     return { createdCount, existingCount };
@@ -386,32 +406,91 @@ class DatabaseService {
       const localStudents = this.getStudents();
       const localLessons = this.getLessons();
 
-      let message = '';
+      let pulledCount = 0;
+      let pushedCount = 0;
 
-      // If remote has data, pull to local
-      if ((remoteStudents && remoteStudents.length > 0) || (remoteLessons && remoteLessons.length > 0)) {
-        let pulledCount = 0;
-        if (remoteStudents && remoteStudents.length > 0) {
-          localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(remoteStudents));
-          pulledCount += remoteStudents.length;
+      // 1. SINCRONIZAÇÃO BIDIRECIONAL DE ALUNOS
+      if (remoteStudents !== null) {
+        const studentMap = new Map<string, Student>();
+        // Insere alunos locais primeiro
+        localStudents.forEach(s => {
+          const normId = normalizeAppwriteId(s.id, 'stu');
+          studentMap.set(normId, { ...s, id: normId });
+        });
+        // Sobrepõe com os remotos
+        remoteStudents.forEach(rs => {
+          studentMap.set(rs.id, rs);
+          pulledCount++;
+        });
+
+        const mergedStudents = Array.from(studentMap.values());
+        localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(mergedStudents));
+
+        // Envia para o Appwrite qualquer aluno local que ainda não esteja no servidor
+        const remoteIds = new Set(remoteStudents.map(rs => rs.id));
+        const missingOnRemote = localStudents.filter(s => {
+          const normId = normalizeAppwriteId(s.id, 'stu');
+          return !remoteIds.has(s.id) && !remoteIds.has(normId);
+        });
+        if (missingOnRemote.length > 0) {
+          const count = await appwriteService.pushStudentsToAppwrite(missingOnRemote);
+          pushedCount += count;
         }
-        if (remoteLessons && remoteLessons.length > 0) {
-          localStorage.setItem(STORAGE_KEYS.LESSONS, JSON.stringify(remoteLessons));
-          pulledCount += remoteLessons.length;
-        }
-        message = `Sincronização concluída: ${pulledCount} registros baixados do Appwrite para a aplicação.`;
-      } else if (localStudents.length > 0 || localLessons.length > 0) {
-        // If remote is empty but local has data, push local data to Appwrite
-        const pushedStudents = await appwriteService.pushStudentsToAppwrite(localStudents);
-        const pushedLessons = await appwriteService.pushLessonsToAppwrite(localLessons);
-        message = `Sincronização concluída: ${pushedStudents} alunos e ${pushedLessons} aulas enviados ao banco Appwrite.`;
-      } else {
-        message = 'Conectado ao Appwrite com sucesso. Nenhum registro pendente para sincronizar.';
       }
+
+      // 2. SINCRONIZAÇÃO BIDIRECIONAL DE AULAS (AGENDA, DIÁRIO E VISÃO GERAL)
+      if (remoteLessons !== null) {
+        const lessonMap = new Map<string, Lesson>();
+        const getSlotKey = (l: Lesson) => `${l.studentId}_${new Date(l.date).getTime()}`;
+        const slotToId = new Map<string, string>();
+
+        // Registra aulas locais
+        localLessons.forEach(l => {
+          const normId = normalizeAppwriteId(l.id, 'lsn');
+          const slotKey = getSlotKey(l);
+          const normalizedLesson = { ...l, id: normId };
+          lessonMap.set(normId, normalizedLesson);
+          slotToId.set(slotKey, normId);
+        });
+
+        // Sobrepõe com as aulas do banco remoto
+        remoteLessons.forEach(rl => {
+          const slotKey = getSlotKey(rl);
+          const existingLocalId = slotToId.get(slotKey);
+          if (existingLocalId && existingLocalId !== rl.id) {
+            lessonMap.delete(existingLocalId);
+          }
+          lessonMap.set(rl.id, rl);
+          slotToId.set(slotKey, rl.id);
+          pulledCount++;
+        });
+
+        const mergedLessons = Array.from(lessonMap.values());
+        // Ordena cronologicamente por data
+        mergedLessons.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        localStorage.setItem(STORAGE_KEYS.LESSONS, JSON.stringify(mergedLessons));
+
+        // Envia para o Appwrite qualquer aula local que ainda não esteja no banco
+        const remoteLessonIds = new Set(remoteLessons.map(rl => rl.id));
+        const missingLessons = localLessons.filter(l => {
+          const normId = normalizeAppwriteId(l.id, 'lsn');
+          const slotKey = getSlotKey(l);
+          const existsRemotely = remoteLessons.some(rl => rl.id === l.id || rl.id === normId || getSlotKey(rl) === slotKey);
+          return !existsRemotely;
+        });
+
+        if (missingLessons.length > 0) {
+          const count = await appwriteService.pushLessonsToAppwrite(missingLessons);
+          pushedCount += count;
+        }
+      }
+
+      const totalStudents = this.getStudents().length;
+      const totalLessons = this.getLessons().length;
 
       return {
         success: true,
-        message
+        message: `Sincronização concluída! ${totalStudents} alunos e ${totalLessons} aulas sincronizados entre dispositivos.`
       };
     } catch (err: any) {
       return {

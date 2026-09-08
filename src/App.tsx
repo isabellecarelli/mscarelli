@@ -9,6 +9,7 @@ import { FinanceView } from './components/finance/FinanceView';
 import { SettingsView } from './components/settings/SettingsView';
 import { ViewType, Student, Lesson, TeacherSettings } from './types';
 import { db } from './services/db';
+import { appwriteService } from './services/appwrite';
 
 export const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
@@ -27,9 +28,10 @@ export const App: React.FC = () => {
   };
 
   useEffect(() => {
+    // 1. Carga inicial local
     refreshAllData();
 
-    // Auto-sync with Appwrite in the background on startup if configured
+    // 2. Sincronização inicial com o Appwrite
     db.syncWithAppwrite().then((res) => {
       if (res.success) {
         refreshAllData();
@@ -37,7 +39,46 @@ export const App: React.FC = () => {
     }).catch(err => {
       console.warn('[Appwrite Startup Sync]', err);
     });
+
+    // 3. Assinatura em Tempo Real (Realtime) para sincronização instantânea entre dispositivos
+    const unsubscribeRealtime = appwriteService.subscribeToChanges(() => {
+      db.syncWithAppwrite().then(() => {
+        refreshAllData();
+      });
+    });
+
+    // 4. Sincronização ao alternar abas ou focar a janela (útil ao desbloquear o celular ou mudar de app)
+    const handleVisibilitySync = () => {
+      if (document.visibilityState === 'visible') {
+        db.syncWithAppwrite().then(() => {
+          refreshAllData();
+        });
+      }
+    };
+    window.addEventListener('focus', handleVisibilitySync);
+    document.addEventListener('visibilitychange', handleVisibilitySync);
+
+    // 5. Polling suave em background a cada 12 segundos para garantir sincronismo
+    const syncInterval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        db.syncWithAppwrite().then(() => {
+          refreshAllData();
+        });
+      }
+    }, 12000);
+
+    return () => {
+      unsubscribeRealtime();
+      window.removeEventListener('focus', handleVisibilitySync);
+      document.removeEventListener('visibilitychange', handleVisibilitySync);
+      clearInterval(syncInterval);
+    };
   }, []);
+
+  // Ao trocar de tela, garante atualização dos dados
+  useEffect(() => {
+    refreshAllData();
+  }, [currentView]);
 
   // --- CRUD HANDLERS WITH DB PERSISTENCE ---
   const handleSaveStudent = (student: Student) => {
