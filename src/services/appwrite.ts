@@ -10,20 +10,28 @@ export interface AppwriteConfig {
 const STORAGE_KEY_APPWRITE_CONFIG = 'mscarelli_appwrite_config';
 
 export const getDefaultAppwriteConfig = (): AppwriteConfig => {
+  const DEFAULT_CONFIG: AppwriteConfig = {
+    endpoint: import.meta.env.VITE_APPWRITE_ENDPOINT || 'https://cloud.appwrite.io/v1',
+    projectId: import.meta.env.VITE_APPWRITE_PROJECT_ID || '6a9f78d200262eb4d9f3',
+    databaseId: import.meta.env.VITE_APPWRITE_DATABASE_ID || '6a9f999a0039d879f8d2'
+  };
+
   try {
     const saved = localStorage.getItem(STORAGE_KEY_APPWRITE_CONFIG);
     if (saved) {
-      return JSON.parse(saved);
+      const parsed = JSON.parse(saved);
+      // If the saved config is the old placeholder 'mscarelli', override with the real one
+      if (parsed.projectId === 'mscarelli' || !parsed.projectId) {
+        localStorage.setItem(STORAGE_KEY_APPWRITE_CONFIG, JSON.stringify(DEFAULT_CONFIG));
+        return DEFAULT_CONFIG;
+      }
+      return parsed;
     }
   } catch (e) {
     // fallback
   }
 
-  return {
-    endpoint: import.meta.env.VITE_APPWRITE_ENDPOINT || 'https://cloud.appwrite.io/v1',
-    projectId: import.meta.env.VITE_APPWRITE_PROJECT_ID || 'mscarelli',
-    databaseId: import.meta.env.VITE_APPWRITE_DATABASE_ID || 'mscarelli_db'
-  };
+  return DEFAULT_CONFIG;
 };
 
 export const COLLECTIONS = {
