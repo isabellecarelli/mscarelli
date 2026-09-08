@@ -11,7 +11,7 @@ const STORAGE_KEY_APPWRITE_CONFIG = 'mscarelli_appwrite_config';
 
 export const getDefaultAppwriteConfig = (): AppwriteConfig => {
   const DEFAULT_CONFIG: AppwriteConfig = {
-    endpoint: import.meta.env.VITE_APPWRITE_ENDPOINT || 'https://cloud.appwrite.io/v1',
+    endpoint: import.meta.env.VITE_APPWRITE_ENDPOINT || 'https://nyc.cloud.appwrite.io/v1',
     projectId: import.meta.env.VITE_APPWRITE_PROJECT_ID || '6a9f78d200262eb4d9f3',
     databaseId: import.meta.env.VITE_APPWRITE_DATABASE_ID || '6a9f999a0039d879f8d2'
   };
@@ -20,8 +20,8 @@ export const getDefaultAppwriteConfig = (): AppwriteConfig => {
     const saved = localStorage.getItem(STORAGE_KEY_APPWRITE_CONFIG);
     if (saved) {
       const parsed = JSON.parse(saved);
-      // If the saved config is the old placeholder 'mscarelli', override with the real one
-      if (parsed.projectId === 'mscarelli' || !parsed.projectId) {
+      // If the saved config is outdated or uses old endpoint/projectId, refresh to real config
+      if (parsed.projectId !== '6a9f78d200262eb4d9f3' || parsed.endpoint === 'https://cloud.appwrite.io/v1') {
         localStorage.setItem(STORAGE_KEY_APPWRITE_CONFIG, JSON.stringify(DEFAULT_CONFIG));
         return DEFAULT_CONFIG;
       }
