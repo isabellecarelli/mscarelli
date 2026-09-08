@@ -631,9 +631,10 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                       type="number"
                       required
                       min="0"
-                      step="10"
-                      value={editingStudent.billingAmount || ''}
-                      onChange={(e) => setEditingStudent({ ...editingStudent, billingAmount: Number(e.target.value) })}
+                      step="1"
+                      placeholder="Ex: 480"
+                      value={editingStudent.billingAmount !== undefined ? editingStudent.billingAmount : ''}
+                      onChange={(e) => setEditingStudent({ ...editingStudent, billingAmount: e.target.value === '' ? 0 : parseInt(e.target.value, 10) || 0 })}
                       className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>

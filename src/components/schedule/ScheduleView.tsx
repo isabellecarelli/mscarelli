@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { 
   ChevronLeft, 
   ChevronRight, 
+  ChevronDown,
   Plus, 
   Calendar as CalendarIcon, 
   Clock, 
@@ -25,6 +26,21 @@ interface ScheduleViewProps {
 
 type CalendarViewMode = 'week' | 'day' | 'month';
 
+const ALL_STATUSES: LessonStatus[] = [
+  LessonStatus.SCHEDULED,
+  LessonStatus.COMPLETED,
+  LessonStatus.POSTPONED,
+  LessonStatus.CANCELLED_CHARGED,
+  LessonStatus.CANCELLED_FREE
+];
+
+const formatToLocalDateTimeInput = (dateInput?: string | Date): string => {
+  if (!dateInput) return '';
+  const d = new Date(dateInput);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
 export const ScheduleView: React.FC<ScheduleViewProps> = ({
   lessons,
   students,
@@ -37,6 +53,16 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLesson, setEditingLesson] = useState<Partial<Lesson> | null>(null);
   const [notification, setNotification] = useState<string | null>(null);
+  const [quickStatusLessonId, setQuickStatusLessonId] = useState<string | null>(null);
+
+  const handleQuickChangeStatus = (lesson: Lesson, newStatus: LessonStatus, e: React.MouseEvent) => {
+    e.stopPropagation();
+    onSaveLesson({
+      ...lesson,
+      status: newStatus
+    });
+    setQuickStatusLessonId(null);
+  };
 
   // Time slots strictly from 08:00 to 21:00
   const hours = Array.from({ length: 14 }, (_, i) => i + 8);
@@ -351,7 +377,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                             <div
                               key={lesson.id}
                               onClick={(e) => handleOpenEditLesson(lesson, e)}
-                              className={`p-1.5 rounded-lg border-l-3 text-xs shadow-2xs cursor-pointer transition-all hover:scale-[1.02] ${
+                              className={`p-1.5 rounded-lg border-l-3 text-xs shadow-2xs cursor-pointer transition-all hover:scale-[1.02] relative group/card ${
                                 isCompleted
                                   ? 'bg-emerald-50 border-emerald-500 text-emerald-900'
                                   : isCancelled
@@ -368,6 +394,53 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                               <p className="text-[10px] truncate opacity-80 mt-0.5">
                                 {lesson.topic || 'Inglês'} ({lesson.durationMinutes}m)
                               </p>
+
+                              {/* Status Badge with Quick-Change Toggle */}
+                              <div className="mt-1.5 flex items-center justify-between relative">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setQuickStatusLessonId(quickStatusLessonId === lesson.id ? null : lesson.id);
+                                  }}
+                                  className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-tight border transition-colors shadow-2xs ${
+                                    isCompleted
+                                      ? 'bg-emerald-100/90 text-emerald-800 border-emerald-300 hover:bg-emerald-200'
+                                      : isCancelled
+                                      ? 'bg-rose-100/90 text-rose-800 border-rose-300 hover:bg-rose-200'
+                                      : 'bg-blue-100/90 text-blue-800 border-blue-300 hover:bg-blue-200'
+                                  }`}
+                                  title="Clique para trocar o status rapidamente"
+                                >
+                                  <span className="truncate max-w-[85px]">{lesson.status}</span>
+                                  <ChevronDown size={10} className="flex-shrink-0" />
+                                </button>
+
+                                {/* Quick Status Popover */}
+                                {quickStatusLessonId === lesson.id && (
+                                  <div 
+                                    className="absolute left-0 top-full mt-1 z-30 bg-white rounded-lg shadow-xl border border-slate-200 py-1 min-w-[170px] animate-fade-in text-left text-slate-700"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100">
+                                      Troca Rápida de Status
+                                    </div>
+                                    {ALL_STATUSES.map((statusOpt) => (
+                                      <button
+                                        key={statusOpt}
+                                        type="button"
+                                        onClick={(e) => handleQuickChangeStatus(lesson, statusOpt, e)}
+                                        className={`w-full text-left px-2.5 py-1.5 text-[11px] flex items-center justify-between hover:bg-slate-50 transition-colors ${
+                                          lesson.status === statusOpt ? 'font-bold text-blue-600 bg-blue-50/50' : 'text-slate-700'
+                                        }`}
+                                      >
+                                        <span className="truncate">{statusOpt}</span>
+                                        {lesson.status === statusOpt && <Check size={12} className="text-blue-600" />}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           );
                         })}
@@ -426,9 +499,45 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                             <h4 className="font-bold text-blue-950 text-sm">{student?.name}</h4>
                             <p className="text-xs text-blue-800">{lesson.topic} • {lesson.durationMinutes} minutos</p>
                           </div>
-                          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-200 text-blue-800">
-                            {lesson.status}
-                          </span>
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setQuickStatusLessonId(quickStatusLessonId === lesson.id ? null : lesson.id);
+                              }}
+                              className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 hover:bg-blue-200 text-blue-800 inline-flex items-center gap-1 transition-colors cursor-pointer"
+                              title="Clique para trocar o status rapidamente"
+                            >
+                              <span>{lesson.status}</span>
+                              <ChevronDown size={12} />
+                            </button>
+
+                            {/* Quick Status Popover in Day View */}
+                            {quickStatusLessonId === lesson.id && (
+                              <div 
+                                className="absolute right-0 top-full mt-1 z-30 bg-white rounded-lg shadow-xl border border-slate-200 py-1 min-w-[180px] animate-fade-in text-left text-slate-700"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100">
+                                  Troca Rápida de Status
+                                </div>
+                                {ALL_STATUSES.map((statusOpt) => (
+                                  <button
+                                    key={statusOpt}
+                                    type="button"
+                                    onClick={(e) => handleQuickChangeStatus(lesson, statusOpt, e)}
+                                    className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-slate-50 transition-colors ${
+                                      lesson.status === statusOpt ? 'font-bold text-blue-600 bg-blue-50/50' : 'text-slate-700'
+                                    }`}
+                                  >
+                                    <span>{statusOpt}</span>
+                                    {lesson.status === statusOpt && <Check size={14} className="text-blue-600" />}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       );
                     })}
@@ -517,7 +626,32 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                 <select
                   required
                   value={editingLesson.studentId || ''}
-                  onChange={(e) => setEditingLesson({ ...editingLesson, studentId: e.target.value })}
+                  onChange={(e) => {
+                    const stId = e.target.value;
+                    const selectedSt = students.find(s => s.id === stId);
+                    let updatedDate = editingLesson.date;
+                    let updatedDuration = editingLesson.durationMinutes || 60;
+
+                    if (selectedSt?.recurringSlots && selectedSt.recurringSlots.length > 0) {
+                      const firstSlot = selectedSt.recurringSlots[0];
+                      if (firstSlot.time) {
+                        const [hours, minutes] = firstSlot.time.split(':').map(Number);
+                        const d = editingLesson.date ? new Date(editingLesson.date) : new Date();
+                        d.setHours(hours, minutes, 0, 0);
+                        updatedDate = d.toISOString();
+                      }
+                      if (firstSlot.durationMinutes) {
+                        updatedDuration = firstSlot.durationMinutes;
+                      }
+                    }
+
+                    setEditingLesson({
+                      ...editingLesson,
+                      studentId: stId,
+                      date: updatedDate,
+                      durationMinutes: updatedDuration
+                    });
+                  }}
                   className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:bg-white"
                 >
                   <option value="">Selecione o aluno...</option>
@@ -537,8 +671,8 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                   <input
                     type="datetime-local"
                     required
-                    value={editingLesson.date ? new Date(editingLesson.date).toISOString().slice(0, 16) : ''}
-                    onChange={(e) => setEditingLesson({ ...editingLesson, date: new Date(e.target.value).toISOString() })}
+                    value={formatToLocalDateTimeInput(editingLesson.date)}
+                    onChange={(e) => setEditingLesson({ ...editingLesson, date: e.target.value ? new Date(e.target.value).toISOString() : '' })}
                     className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:bg-white"
                   />
                 </div>

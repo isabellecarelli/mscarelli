@@ -15,8 +15,8 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({ onOpenMobileMenu }) 
       >
         <Menu size={24} />
       </button>
-      <h1 className="text-lg font-bold bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
-        Profeu
+      <h1 className="text-xl font-black text-orange-500 tracking-tight">
+        Ms. Carelli
       </h1>
     </div>
   );

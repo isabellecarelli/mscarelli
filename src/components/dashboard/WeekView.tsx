@@ -19,17 +19,15 @@ export const WeekView: React.FC<WeekViewProps> = ({
   const weekStart = (() => {
     const now = new Date();
     const day = now.getDay();
-    let offsetDays = 1 - day;
-    if (day === 0) offsetDays = -6; // Sunday
-    if (day === 6) offsetDays = 2;  // Saturday -> Next Monday
+    const offsetDays = day === 0 ? -6 : 1 - day; // Monday start
     const b = new Date(now);
     b.setDate(now.getDate() + offsetDays);
     b.setHours(0, 0, 0, 0);
     return b;
   })();
 
-  // 5 days: Monday through Friday
-  const weekDays = Array.from({ length: 5 }, (_, idx) => {
+  // 6 days: Monday through Saturday (Segunda a Sábado)
+  const weekDays = Array.from({ length: 6 }, (_, idx) => {
     const d = new Date(weekStart);
     d.setDate(weekStart.getDate() + idx);
     return d;
@@ -54,14 +52,14 @@ export const WeekView: React.FC<WeekViewProps> = ({
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
           <Calendar size={20} className="text-purple-500" />
-          Visão da Semana
+          Visão da Semana (Segunda a Sábado)
         </h3>
         <span className="text-xs text-slate-400 font-medium hidden sm:inline">
           (Clique nas aulas para editar ou nos dias para adicionar nova aula)
         </span>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {weekDays.map((dayDate, idx) => {
           const dayLessons = getLessonsForDay(dayDate);
           const activeToday = isToday(dayDate);

@@ -7,6 +7,7 @@ import {
   FinanceRecord, 
   TeacherSettings 
 } from '../types';
+import { appwriteService } from './appwrite';
 
 const STORAGE_KEYS = {
   STUDENTS: 'mscarelli_students_v3',
@@ -51,6 +52,11 @@ class DatabaseService {
     }
     localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(updated));
 
+    // Persist to Appwrite Database asynchronously
+    appwriteService.saveStudentToAppwrite(student).catch(err => {
+      console.warn('[Appwrite Sync Error]', err);
+    });
+
     // Se o aluno possui recorrência ativa, gera automaticamente as próximas aulas do mês corrente
     if (student.isActive && student.hasRecurringSchedule && student.recurringSlots && student.recurringSlots.length > 0) {
       this.generateUpcomingLessonsForStudent(student);
@@ -67,6 +73,11 @@ class DatabaseService {
     const lessons = this.getLessons().filter(l => l.studentId !== id);
     localStorage.setItem(STORAGE_KEYS.LESSONS, JSON.stringify(lessons));
     
+    // Delete from Appwrite Database
+    appwriteService.deleteStudentFromAppwrite(id).catch(err => {
+      console.warn('[Appwrite Sync Error]', err);
+    });
+
     return students;
   }
 
@@ -92,12 +103,24 @@ class DatabaseService {
       updated = [lesson, ...lessons];
     }
     localStorage.setItem(STORAGE_KEYS.LESSONS, JSON.stringify(updated));
+
+    // Persist to Appwrite Database
+    appwriteService.saveLessonToAppwrite(lesson).catch(err => {
+      console.warn('[Appwrite Sync Error]', err);
+    });
+
     return updated;
   }
 
   deleteLesson(id: string): Lesson[] {
     const lessons = this.getLessons().filter(l => l.id !== id);
     localStorage.setItem(STORAGE_KEYS.LESSONS, JSON.stringify(lessons));
+
+    // Delete from Appwrite Database
+    appwriteService.deleteLessonFromAppwrite(id).catch(err => {
+      console.warn('[Appwrite Sync Error]', err);
+    });
+
     return lessons;
   }
 
@@ -264,6 +287,10 @@ class DatabaseService {
       const plans: Record<string, ClassPlan> = data ? JSON.parse(data) : {};
       plans[plan.studentId] = { ...plan, lastUpdated: new Date().toISOString() };
       localStorage.setItem(STORAGE_KEYS.CLASS_PLANS, JSON.stringify(plans));
+
+      appwriteService.saveClassPlanToAppwrite(plan).catch(err => {
+        console.warn('[Appwrite Sync Error]', err);
+      });
     } catch (e) {
       console.error('Error saving class plan', e);
     }
@@ -303,6 +330,10 @@ class DatabaseService {
       const planners: Record<string, StudyPlanner> = data ? JSON.parse(data) : {};
       planners[planner.studentId] = { ...planner, lastUpdated: new Date().toISOString() };
       localStorage.setItem(STORAGE_KEYS.STUDY_PLANNERS, JSON.stringify(planners));
+
+      appwriteService.saveStudyPlannerToAppwrite(planner).catch(err => {
+        console.warn('[Appwrite Sync Error]', err);
+      });
     } catch (e) {
       console.error('Error saving study planner', e);
     }
@@ -328,8 +359,49 @@ class DatabaseService {
         notes
       };
       localStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(payments));
+
+      appwriteService.savePaymentToAppwrite(recordKey, status, notes).catch(err => {
+        console.warn('[Appwrite Sync Error]', err);
+      });
     } catch (e) {
       console.error('Error saving payment status', e);
+    }
+  }
+
+  // --- APPWRITE SYNC ---
+  async syncWithAppwrite(): Promise<{ success: boolean; message: string }> {
+    if (!appwriteService.isConfigured()) {
+      return { 
+        success: false, 
+        message: 'Appwrite não está configurado com um Project ID válido. Configure em Configurações.' 
+      };
+    }
+
+    try {
+      const [remoteStudents, remoteLessons] = await Promise.all([
+        appwriteService.fetchStudentsFromAppwrite(),
+        appwriteService.fetchLessonsFromAppwrite()
+      ]);
+
+      let pulledCount = 0;
+      if (remoteStudents && remoteStudents.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(remoteStudents));
+        pulledCount += remoteStudents.length;
+      }
+      if (remoteLessons && remoteLessons.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.LESSONS, JSON.stringify(remoteLessons));
+        pulledCount += remoteLessons.length;
+      }
+
+      return {
+        success: true,
+        message: `Sincronização com Appwrite concluída com sucesso! (${pulledCount} registros atualizados)`
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: `Falha ao sincronizar com Appwrite: ${err?.message || 'Verifique a conexão e credenciais'}`
+      };
     }
   }
 

@@ -75,10 +75,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="flex items-center justify-between">
             {!isCollapsed && (
               <div>
-                <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
-                  Profeu
+                <h1 className="text-2xl font-black text-orange-500 tracking-tight">
+                  Ms. Carelli
                 </h1>
-                <p className="text-xs text-slate-400 mt-1">
+                <p className="text-xs text-slate-400 mt-0.5">
                   Gestão Pedagógica
                 </p>
               </div>

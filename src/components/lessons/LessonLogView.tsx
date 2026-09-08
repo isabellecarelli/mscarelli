@@ -20,6 +20,37 @@ interface LessonLogViewProps {
   onSaveLesson: (lesson: Lesson) => void;
 }
 
+const formatToLocalDateTimeInput = (dateInput?: string | Date): string => {
+  if (!dateInput) return '';
+  const d = new Date(dateInput);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
+const getStudentDefaultSchedule = (student?: Student): { dateISO: string; durationMinutes: number } => {
+  const now = new Date();
+  let targetDate = new Date();
+  let durationMinutes = 60;
+
+  if (student && student.recurringSlots && student.recurringSlots.length > 0) {
+    const todayDay = now.getDay();
+    const matchingSlot = student.recurringSlots.find(s => s.dayOfWeek === todayDay) || student.recurringSlots[0];
+    const [h, m] = (matchingSlot.time || '14:00').split(':').map(Number);
+    durationMinutes = matchingSlot.durationMinutes || 60;
+
+    let daysDiff = (matchingSlot.dayOfWeek - todayDay + 7) % 7;
+    targetDate.setDate(targetDate.getDate() + daysDiff);
+    targetDate.setHours(h || 14, m || 0, 0, 0);
+  } else {
+    targetDate.setHours(14, 0, 0, 0);
+  }
+
+  return {
+    dateISO: targetDate.toISOString(),
+    durationMinutes
+  };
+};
+
 export const LessonLogView: React.FC<LessonLogViewProps> = ({
   students,
   lessons,
@@ -55,12 +86,15 @@ export const LessonLogView: React.FC<LessonLogViewProps> = ({
     : [];
 
   const handleOpenNewModal = (prefillStudentId?: string) => {
-    const todayISO = new Date().toISOString().slice(0, 16);
+    const targetStudentId = prefillStudentId || selectedStudentId || (students[0]?.id || '');
+    const targetStudent = students.find(s => s.id === targetStudentId);
+    const scheduleInfo = getStudentDefaultSchedule(targetStudent);
+
     setEditingLesson({
       id: `lesson-${Date.now()}`,
-      studentId: prefillStudentId || (students[0]?.id || ''),
-      date: new Date().toISOString(),
-      durationMinutes: 60,
+      studentId: targetStudentId,
+      date: scheduleInfo.dateISO,
+      durationMinutes: scheduleInfo.durationMinutes,
       subject: 'Inglês',
       topic: '',
       homework: '',
@@ -364,12 +398,24 @@ export const LessonLogView: React.FC<LessonLogViewProps> = ({
                 <select
                   required
                   value={editingLesson.studentId || ''}
-                  onChange={(e) => setEditingLesson({ ...editingLesson, studentId: e.target.value })}
+                  onChange={(e) => {
+                    const newStudentId = e.target.value;
+                    const st = students.find(s => s.id === newStudentId);
+                    const scheduleInfo = getStudentDefaultSchedule(st);
+                    setEditingLesson({
+                      ...editingLesson,
+                      studentId: newStudentId,
+                      date: scheduleInfo.dateISO,
+                      durationMinutes: scheduleInfo.durationMinutes
+                    });
+                  }}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:bg-white"
                 >
                   <option value="">Selecione o aluno...</option>
                   {students.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.defaultScheduleText || s.level})
+                    </option>
                   ))}
                 </select>
               </div>
@@ -382,7 +428,7 @@ export const LessonLogView: React.FC<LessonLogViewProps> = ({
                   <input
                     type="datetime-local"
                     required
-                    value={editingLesson.date ? new Date(editingLesson.date).toISOString().slice(0, 16) : ''}
+                    value={formatToLocalDateTimeInput(editingLesson.date)}
                     onChange={(e) => setEditingLesson({ ...editingLesson, date: new Date(e.target.value).toISOString() })}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:bg-white"
                   />
