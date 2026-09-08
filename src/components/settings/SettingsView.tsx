@@ -163,6 +163,14 @@ const AppwriteSettingsCard: React.FC = () => {
     setIsLoading(false);
   };
 
+  const handleTestConnection = async () => {
+    setIsLoading(true);
+    setSyncStatus('Testando conexão com Appwrite...');
+    const result = await appwriteService.testConnection();
+    setSyncStatus(result.message);
+    setIsLoading(false);
+  };
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 space-y-5">
       <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -177,7 +185,7 @@ const AppwriteSettingsCard: React.FC = () => {
               Banco de Dados Appwrite
             </h3>
             <p className="text-xs text-slate-400">
-              Persistência na nuvem e sincronização em tempo real
+              Persistência na nuvem e sincronização em tempo real com Appwrite Cloud
             </p>
           </div>
         </div>
@@ -241,6 +249,15 @@ const AppwriteSettingsCard: React.FC = () => {
           <button
             type="button"
             disabled={isLoading}
+            onClick={handleTestConnection}
+            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-colors"
+          >
+            Testar Conexão
+          </button>
+
+          <button
+            type="button"
+            disabled={isLoading}
             onClick={handleSyncNow}
             className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
           >
@@ -254,9 +271,9 @@ const AppwriteSettingsCard: React.FC = () => {
           )}
 
           {syncStatus && (
-            <span className="text-slate-600 text-xs font-medium">
+            <div className="w-full text-slate-700 text-xs font-medium bg-slate-50 border border-slate-200 rounded-lg p-2.5 mt-2">
               {syncStatus}
-            </span>
+            </div>
           )}
         </div>
       </form>

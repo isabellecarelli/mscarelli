@@ -28,6 +28,15 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     refreshAllData();
+
+    // Auto-sync with Appwrite in the background on startup if configured
+    db.syncWithAppwrite().then((res) => {
+      if (res.success) {
+        refreshAllData();
+      }
+    }).catch(err => {
+      console.warn('[Appwrite Startup Sync]', err);
+    });
   }, []);
 
   // --- CRUD HANDLERS WITH DB PERSISTENCE ---

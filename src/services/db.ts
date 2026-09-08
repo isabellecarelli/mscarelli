@@ -383,19 +383,35 @@ class DatabaseService {
         appwriteService.fetchLessonsFromAppwrite()
       ]);
 
-      let pulledCount = 0;
-      if (remoteStudents && remoteStudents.length > 0) {
-        localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(remoteStudents));
-        pulledCount += remoteStudents.length;
-      }
-      if (remoteLessons && remoteLessons.length > 0) {
-        localStorage.setItem(STORAGE_KEYS.LESSONS, JSON.stringify(remoteLessons));
-        pulledCount += remoteLessons.length;
+      const localStudents = this.getStudents();
+      const localLessons = this.getLessons();
+
+      let message = '';
+
+      // If remote has data, pull to local
+      if ((remoteStudents && remoteStudents.length > 0) || (remoteLessons && remoteLessons.length > 0)) {
+        let pulledCount = 0;
+        if (remoteStudents && remoteStudents.length > 0) {
+          localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(remoteStudents));
+          pulledCount += remoteStudents.length;
+        }
+        if (remoteLessons && remoteLessons.length > 0) {
+          localStorage.setItem(STORAGE_KEYS.LESSONS, JSON.stringify(remoteLessons));
+          pulledCount += remoteLessons.length;
+        }
+        message = `Sincronização concluída: ${pulledCount} registros baixados do Appwrite para a aplicação.`;
+      } else if (localStudents.length > 0 || localLessons.length > 0) {
+        // If remote is empty but local has data, push local data to Appwrite
+        const pushedStudents = await appwriteService.pushStudentsToAppwrite(localStudents);
+        const pushedLessons = await appwriteService.pushLessonsToAppwrite(localLessons);
+        message = `Sincronização concluída: ${pushedStudents} alunos e ${pushedLessons} aulas enviados ao banco Appwrite.`;
+      } else {
+        message = 'Conectado ao Appwrite com sucesso. Nenhum registro pendente para sincronizar.';
       }
 
       return {
         success: true,
-        message: `Sincronização com Appwrite concluída com sucesso! (${pulledCount} registros atualizados)`
+        message
       };
     } catch (err: any) {
       return {

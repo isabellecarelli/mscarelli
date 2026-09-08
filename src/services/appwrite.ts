@@ -67,6 +67,32 @@ class AppwriteService {
     return !!this.config.projectId && this.config.projectId !== 'placeholder';
   }
 
+  async testConnection(): Promise<{ ok: boolean; message: string }> {
+    if (!this.isConfigured()) {
+      return { ok: false, message: 'Project ID não configurado.' };
+    }
+    try {
+      // Test querying database / collection
+      await this.databases.listDocuments(
+        this.config.databaseId,
+        COLLECTIONS.STUDENTS,
+        [Query.limit(1)]
+      );
+      return { ok: true, message: 'Conexão com Appwrite estabelecida com sucesso!' };
+    } catch (err: any) {
+      if (err.code === 404) {
+        return { 
+          ok: true, 
+          message: 'Conectado ao Appwrite! (Nota: a base ou coleções serão criadas conforme os dados forem adicionados)' 
+        };
+      }
+      return { 
+        ok: false, 
+        message: `Erro na conexão: ${err.message || 'Verifique Project ID e Database ID'}` 
+      };
+    }
+  }
+
   // --- STUDENTS ---
   async saveStudentToAppwrite(student: Student): Promise<boolean> {
     if (!this.isConfigured()) return false;
@@ -360,6 +386,27 @@ class AppwriteService {
       console.warn('[Appwrite] Error saving payment to Appwrite:', e);
       return false;
     }
+  }
+
+  // --- PUSH BATCH TO APPWRITE ---
+  async pushStudentsToAppwrite(students: Student[]): Promise<number> {
+    if (!this.isConfigured() || !students.length) return 0;
+    let count = 0;
+    for (const student of students) {
+      const ok = await this.saveStudentToAppwrite(student);
+      if (ok) count++;
+    }
+    return count;
+  }
+
+  async pushLessonsToAppwrite(lessons: Lesson[]): Promise<number> {
+    if (!this.isConfigured() || !lessons.length) return 0;
+    let count = 0;
+    for (const lesson of lessons) {
+      const ok = await this.saveLessonToAppwrite(lesson);
+      if (ok) count++;
+    }
+    return count;
   }
 }
 
