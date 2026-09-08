@@ -1,0 +1,16 @@
+{
+  "projectId": "mscarelli-app",
+  "projectName": "Ms Carelli",
+  "sites": [
+    {
+      "$id": "mscarelli-dashboard",
+      "name": "Ms Carelli Dashboard",
+      "framework": "vite",
+      "rootDirectory": "./",
+      "buildCommand": "npm run build",
+      "outputDirectory": "dist",
+      "installCommand": "npm install",
+      "fallback": "index.html"
+    }
+  ]
+}
