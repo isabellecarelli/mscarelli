@@ -1,31 +1,57 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/layout/Sidebar';
 import { MobileHeader } from './components/layout/MobileHeader';
 import { DashboardView } from './components/dashboard/DashboardView';
 import { StudentsView } from './components/students/StudentsView';
 import { ScheduleView } from './components/schedule/ScheduleView';
+import { LessonLogView } from './components/lessons/LessonLogView';
 import { FinanceView } from './components/finance/FinanceView';
 import { SettingsView } from './components/settings/SettingsView';
-import { mockStudents, getInitialLessons } from './data/mockData';
-import { ViewType, TeacherSettings } from './types';
-import { BrainCircuit, Sparkles } from 'lucide-react';
+import { ViewType, Student, Lesson, TeacherSettings } from './types';
+import { db } from './services/db';
 
 export const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
-  const [students, setStudents] = useState(mockStudents);
-  const [lessons, setLessons] = useState(getInitialLessons());
+  // Persistent State from Database Service
+  const [students, setStudents] = useState<Student[]>([]);
+  const [lessons, setLessons] = useState<Lesson[]>([]);
+  const [teacherSettings, setTeacherSettings] = useState<TeacherSettings>(db.getSettings());
 
-  const [teacherSettings, setTeacherSettings] = useState<TeacherSettings>({
-    name: 'Isabelle Carelli',
-    email: 'isabelle.carelli@exemplo.com',
-    enableRepertoireTracking: true,
-    city: 'São Paulo',
-    state: 'SP',
-    whatsapp: '(11) 98888-7777'
-  });
+  useEffect(() => {
+    setStudents(db.getStudents());
+    setLessons(db.getLessons());
+    setTeacherSettings(db.getSettings());
+  }, []);
+
+  // --- CRUD HANDLERS WITH DB PERSISTENCE ---
+  const handleSaveStudent = (student: Student) => {
+    const updated = db.saveStudent(student);
+    setStudents(updated);
+  };
+
+  const handleDeleteStudent = (id: string) => {
+    const updatedStudents = db.deleteStudent(id);
+    setStudents(updatedStudents);
+    setLessons(db.getLessons());
+  };
+
+  const handleSaveLesson = (lesson: Lesson) => {
+    const updated = db.saveLesson(lesson);
+    setLessons(updated);
+  };
+
+  const handleDeleteLesson = (id: string) => {
+    const updated = db.deleteLesson(id);
+    setLessons(updated);
+  };
+
+  const handleUpdateSettings = (settings: TeacherSettings) => {
+    const updated = db.saveSettings(settings);
+    setTeacherSettings(updated);
+  };
 
   const renderContent = () => {
     switch (currentView) {
@@ -35,56 +61,47 @@ export const App: React.FC = () => {
             students={students}
             lessons={lessons}
             onNavigate={(view) => setCurrentView(view)}
+            onSaveLesson={handleSaveLesson}
+            onDeleteLesson={handleDeleteLesson}
           />
         );
       case 'students':
         return (
           <StudentsView
             students={students}
+            onSaveStudent={handleSaveStudent}
+            onDeleteStudent={handleDeleteStudent}
           />
         );
       case 'schedule':
-      case 'lesson-log':
         return (
           <ScheduleView
             lessons={lessons}
             students={students}
+            onSaveLesson={handleSaveLesson}
+            onDeleteLesson={handleDeleteLesson}
+          />
+        );
+      case 'lesson-log':
+        return (
+          <LessonLogView
+            students={students}
+            lessons={lessons}
+            onSaveLesson={handleSaveLesson}
           />
         );
       case 'finance':
-      case 'expenses':
         return (
           <FinanceView
             students={students}
-            lessons={lessons}
           />
         );
       case 'settings':
         return (
           <SettingsView
             settings={teacherSettings}
-            onUpdateSettings={setTeacherSettings}
+            onUpdateSettings={handleUpdateSettings}
           />
-        );
-      case 'ai-tools':
-        return (
-          <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-8 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-blue-100 text-blue-600 rounded-lg">
-                <BrainCircuit size={28} />
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold text-slate-800">Assistente Pedagógico IA</h2>
-                <p className="text-slate-500 text-sm">Geração de planos de aula e atividades adaptadas para cada perfil de aluno</p>
-              </div>
-            </div>
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-3">
-              <Sparkles className="text-blue-600 flex-shrink-0" size={20} />
-              <p className="text-blue-900 text-sm">
-                O módulo de IA está integrado ao Google Gemini API para criar relatórios pedagógicos e exercícios personalizados para alunos com TDAH, Autismo e Altas Habilidades.
-              </p>
-            </div>
-          </div>
         );
       default:
         return (
@@ -92,6 +109,8 @@ export const App: React.FC = () => {
             students={students}
             lessons={lessons}
             onNavigate={(view) => setCurrentView(view)}
+            onSaveLesson={handleSaveLesson}
+            onDeleteLesson={handleDeleteLesson}
           />
         );
     }
@@ -108,7 +127,6 @@ export const App: React.FC = () => {
         isMobileOpen={isMobileOpen}
         onMobileToggle={() => setIsMobileOpen(!isMobileOpen)}
         userName={teacherSettings.name}
-        enableRepertoire={teacherSettings.enableRepertoireTracking}
         onLogout={() => alert('Sessão encerrada com sucesso.')}
       />
 
@@ -123,7 +141,7 @@ export const App: React.FC = () => {
         <MobileHeader onOpenMobileMenu={() => setIsMobileOpen(true)} />
 
         {/* Inner Content Area */}
-        <div className="max-w-7xl mx-auto p-6 md:p-8 pt-20 lg:pt-8">
+        <div className="max-w-7xl mx-auto p-4 sm:p-6 md:p-8 pt-20 lg:pt-8">
           {renderContent()}
         </div>
       </main>

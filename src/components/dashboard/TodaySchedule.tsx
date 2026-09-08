@@ -1,28 +1,35 @@
 import React from 'react';
-import { CalendarCheck, MapPin } from 'lucide-react';
+import { CalendarCheck, MapPin, Edit3 } from 'lucide-react';
 import { Student, Lesson, LessonStatus, ViewType } from '../../types';
 
 interface TodayScheduleProps {
   todayLessons: Lesson[];
   students: Student[];
   onNavigate?: (view: ViewType) => void;
+  onEditLesson: (lesson: Lesson) => void;
 }
 
 export const TodaySchedule: React.FC<TodayScheduleProps> = ({
   todayLessons,
   students,
-  onNavigate
+  onNavigate,
+  onEditLesson
 }) => {
   return (
     <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-      <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
-        <CalendarCheck size={20} className="text-blue-500" />
-        Agenda Detalhada de Hoje
-      </h3>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+          <CalendarCheck size={20} className="text-blue-500" />
+          Agenda Detalhada de Hoje
+        </h3>
+        <span className="text-xs text-slate-400 font-medium hidden sm:inline">
+          (Clique em qualquer aula para editar horário ou status)
+        </span>
+      </div>
 
       {todayLessons.length === 0 ? (
         <div className="text-center py-8">
-          <p className="text-slate-500 italic mb-2">
+          <p className="text-slate-500 italic mb-2 text-sm">
             Você está livre hoje! Aproveite para descansar ou planejar.
           </p>
           <button
@@ -33,7 +40,7 @@ export const TodaySchedule: React.FC<TodayScheduleProps> = ({
           </button>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {todayLessons.map((lesson) => {
             const student = students.find((s) => s.id === lesson.studentId);
             const isCompleted = lesson.status === LessonStatus.COMPLETED;
@@ -45,11 +52,13 @@ export const TodaySchedule: React.FC<TodayScheduleProps> = ({
             return (
               <div
                 key={lesson.id}
-                className={`flex flex-col md:flex-row md:items-center justify-between p-4 rounded-lg border-l-4 transition-all ${
+                onClick={() => onEditLesson(lesson)}
+                className={`flex flex-col md:flex-row md:items-center justify-between p-4 rounded-lg border-l-4 transition-all cursor-pointer hover:shadow-md hover:translate-x-0.5 group ${
                   isCompleted
                     ? 'border-emerald-500 bg-emerald-50/60'
                     : 'border-blue-500 bg-slate-50'
                 }`}
+                title="Clique para editar horário ou informações da aula"
               >
                 <div className="flex gap-4 items-start">
                   <div className="text-center min-w-[60px]">
@@ -62,11 +71,12 @@ export const TodaySchedule: React.FC<TodayScheduleProps> = ({
                   </div>
 
                   <div>
-                    <h4 className="font-semibold text-slate-800">
-                      {student?.name || 'Aluno não informado'}
+                    <h4 className="font-semibold text-slate-800 flex items-center gap-2">
+                      {student?.name || 'Aluno'}
+                      <Edit3 size={13} className="text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                     </h4>
                     <p className="text-sm text-slate-600">
-                      {lesson.subject || 'A definir'} • {lesson.topic || 'Sem tópico definido'}
+                      {lesson.subject || 'Inglês'} • {lesson.topic || 'Sem tópico definido'}
                     </p>
                     {student?.address && (
                       <div className="flex items-center gap-1 text-xs text-slate-400 mt-1">
@@ -79,13 +89,13 @@ export const TodaySchedule: React.FC<TodayScheduleProps> = ({
 
                 <div className="mt-4 md:mt-0 flex items-center gap-3 justify-end">
                   <span
-                    className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-transform group-hover:scale-105 ${
                       isCompleted
                         ? 'bg-emerald-200 text-emerald-800'
                         : 'bg-blue-200 text-blue-800'
                     }`}
                   >
-                    {isCompleted ? 'Realizada' : 'Pendente'}
+                    {lesson.status}
                   </span>
                 </div>
               </div>

@@ -1,13 +1,20 @@
 import React from 'react';
-import { Calendar } from 'lucide-react';
+import { Calendar, Plus, Edit3 } from 'lucide-react';
 import { Student, Lesson, LessonStatus } from '../../types';
 
 interface WeekViewProps {
   students: Student[];
   lessons: Lesson[];
+  onEditLesson: (lesson: Lesson) => void;
+  onAddLessonAtDate: (date: Date) => void;
 }
 
-export const WeekView: React.FC<WeekViewProps> = ({ students, lessons }) => {
+export const WeekView: React.FC<WeekViewProps> = ({
+  students,
+  lessons,
+  onEditLesson,
+  onAddLessonAtDate
+}) => {
   // Determine Monday of current week
   const weekStart = (() => {
     const now = new Date();
@@ -44,10 +51,15 @@ export const WeekView: React.FC<WeekViewProps> = ({ students, lessons }) => {
 
   return (
     <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-      <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
-        <Calendar size={20} className="text-purple-500" />
-        Visão da Semana
-      </h3>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+          <Calendar size={20} className="text-purple-500" />
+          Visão da Semana
+        </h3>
+        <span className="text-xs text-slate-400 font-medium hidden sm:inline">
+          (Clique nas aulas para editar ou nos dias para adicionar nova aula)
+        </span>
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         {weekDays.map((dayDate, idx) => {
@@ -65,32 +77,51 @@ export const WeekView: React.FC<WeekViewProps> = ({ students, lessons }) => {
             >
               {/* Day header */}
               <div
-                className={`text-center pb-2 mb-2 border-b ${
+                className={`text-center pb-2 mb-2 border-b flex items-center justify-between px-1 ${
                   activeToday ? 'border-blue-200' : 'border-slate-200'
                 }`}
               >
-                <p
-                  className={`text-xs font-bold uppercase tracking-wider ${
-                    activeToday ? 'text-blue-600' : 'text-slate-500'
-                  }`}
+                <div>
+                  <p
+                    className={`text-[11px] font-bold uppercase tracking-wider text-left ${
+                      activeToday ? 'text-blue-600' : 'text-slate-500'
+                    }`}
+                  >
+                    {dayNames[dayDate.getDay()]}
+                  </p>
+                  <p
+                    className={`text-xl font-bold text-left leading-none mt-0.5 ${
+                      activeToday ? 'text-blue-700' : 'text-slate-700'
+                    }`}
+                  >
+                    {dayDate.getDate()}
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => onAddLessonAtDate(dayDate)}
+                  className="p-1 hover:bg-blue-100 rounded text-blue-600 text-xs font-semibold transition-colors"
+                  title="Adicionar aula neste dia"
                 >
-                  {dayNames[dayDate.getDay()]}
-                </p>
-                <p
-                  className={`text-xl font-bold ${
-                    activeToday ? 'text-blue-700' : 'text-slate-700'
-                  }`}
-                >
-                  {dayDate.getDate()}
-                </p>
+                  <Plus size={16} />
+                </button>
               </div>
 
               {/* Lessons list */}
               <div className="space-y-2 flex-1">
                 {dayLessons.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic text-center py-6">
-                    Sem aulas
-                  </p>
+                  <div 
+                    onClick={() => onAddLessonAtDate(dayDate)}
+                    className="h-full flex flex-col items-center justify-center cursor-pointer hover:bg-slate-100/60 rounded-lg p-2 transition-colors"
+                    title="Clique para agendar aula neste dia"
+                  >
+                    <p className="text-xs text-slate-400 italic text-center">
+                      Sem aulas
+                    </p>
+                    <span className="text-[10px] text-blue-600 font-medium mt-1">
+                      + Agendar
+                    </span>
+                  </div>
                 ) : (
                   dayLessons.map((lesson) => {
                     const student = students.find((s) => s.id === lesson.studentId);
@@ -103,15 +134,20 @@ export const WeekView: React.FC<WeekViewProps> = ({ students, lessons }) => {
                     return (
                       <div
                         key={lesson.id}
-                        className={`text-xs p-2 rounded border-l-2 shadow-2xs transition-all hover:translate-x-0.5 ${
+                        onClick={() => onEditLesson(lesson)}
+                        className={`text-xs p-2 rounded border-l-3 shadow-2xs transition-all cursor-pointer hover:scale-[1.02] hover:shadow-xs group ${
                           isCompleted
-                            ? 'bg-emerald-100 border-emerald-500'
-                            : 'bg-white border-blue-400'
+                            ? 'bg-emerald-100 border-emerald-500 text-emerald-950'
+                            : 'bg-white border-blue-400 text-slate-800'
                         }`}
+                        title="Clique para editar horário ou dados da aula"
                       >
-                        <p className="font-bold text-slate-700">{lessonTime}</p>
+                        <div className="flex items-center justify-between">
+                          <p className="font-bold text-slate-700">{lessonTime}</p>
+                          <Edit3 size={11} className="opacity-0 group-hover:opacity-100 text-slate-400 transition-opacity" />
+                        </div>
                         <p
-                          className="text-slate-600 truncate font-medium"
+                          className="text-slate-600 truncate font-medium mt-0.5"
                           title={student?.name}
                         >
                           {student?.name || 'Aluno'}

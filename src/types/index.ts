@@ -6,13 +6,15 @@ export enum LessonStatus {
   POSTPONED = "Adiada"
 }
 
-export enum SpecialNeed {
-  TDAH = "TDAH",
-  AUTISMO = "Autismo",
-  DISLEXIA = "Dislexia",
-  DEFICIT_ATENCAO = "Déficit de Atenção",
-  NONE = "Nenhuma"
-}
+export type EnglishLevel = 
+  | 'Iniciante (A1)'
+  | 'Básico (A2)'
+  | 'Intermediário (B1)'
+  | 'Intermediário Superior (B2)'
+  | 'Avançado (C1)'
+  | 'Fluente / Proficiente (C2)'
+  | 'Inglês para Negócios'
+  | 'Preparatório (IELTS/TOEFL)';
 
 export interface Student {
   id: string;
@@ -20,31 +22,67 @@ export interface Student {
   email?: string;
   phone?: string;
   address?: string;
+  level: EnglishLevel;
+  defaultSchedule: string; // Ex: "Terças e Quintas às 14:00"
+  hourlyRate: number; // R$ por hora/aula
   isActive: boolean;
-  specialNeed?: SpecialNeed;
-  hourlyRate?: number;
   notes?: string;
+  createdAt: string;
 }
 
 export interface Lesson {
   id: string;
   studentId: string;
-  date: string; // ISO String (e.g. 2026-09-08T14:00:00.000Z)
+  date: string; // ISO String (Ex: 2026-09-08T14:00:00.000Z)
   durationMinutes: number;
   subject?: string;
   topic?: string;
   status: LessonStatus;
   notes?: string;
+  homework?: string;
   price?: number;
+}
+
+export interface ClassPlan {
+  studentId: string;
+  currentUnit: string;
+  grammarTopics: string;
+  vocabularyTopics: string;
+  homework: string;
+  nextClassObjectives: string;
+  lastUpdated: string;
+}
+
+export interface StudyPlanner {
+  studentId: string;
+  weeklyHoursTarget: number;
+  learningGoals: string;
+  recommendedMaterials: string;
+  weeklyRoutine: string;
+  notes: string;
+  lastUpdated: string;
+}
+
+export interface FinanceRecord {
+  id: string;
+  studentId: string;
+  month: string; // Ex: "Setembro 2026"
+  hourlyRate: number;
+  classesCount: number;
+  totalAmount: number;
+  status: 'Pago' | 'Pendente';
+  paymentDate?: string;
+  notes?: string;
 }
 
 export interface TeacherSettings {
   name: string;
   email: string;
-  enableRepertoireTracking?: boolean;
+  title: string;
   city?: string;
   state?: string;
   whatsapp?: string;
+  hourlyRateDefault: number;
 }
 
 export type ViewType = 
@@ -52,8 +90,5 @@ export type ViewType =
   | 'students'
   | 'schedule'
   | 'lesson-log'
-  | 'repertoire'
   | 'finance'
-  | 'expenses'
-  | 'ai-tools'
   | 'settings';

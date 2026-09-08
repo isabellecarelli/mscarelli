@@ -4,10 +4,7 @@ import {
   Users, 
   Calendar, 
   BookOpen, 
-  Music, 
   DollarSign, 
-  Receipt, 
-  BrainCircuit, 
   Settings, 
   ChevronLeft, 
   ChevronRight, 
@@ -24,7 +21,6 @@ interface SidebarProps {
   isMobileOpen: boolean;
   onMobileToggle: () => void;
   userName?: string;
-  enableRepertoire?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -35,28 +31,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleCollapse,
   isMobileOpen,
   onMobileToggle,
-  userName = "Professora Isabelle",
-  enableRepertoire = true
+  userName = "Isabelle Carelli"
 }) => {
-  const primaryNav = [
+  const navItems = [
     { id: 'dashboard' as ViewType, label: 'Visão Geral', icon: LayoutDashboard },
     { id: 'students' as ViewType, label: 'Alunos', icon: Users },
     { id: 'schedule' as ViewType, label: 'Agenda', icon: Calendar },
-    { id: 'lesson-log' as ViewType, label: 'Diário de Aulas', icon: BookOpen }
-  ];
-
-  const repertoireNav = { id: 'repertoire' as ViewType, label: 'Repertório', icon: Music };
-
-  const secondaryNav = [
+    { id: 'lesson-log' as ViewType, label: 'Diário de Aulas', icon: BookOpen },
     { id: 'finance' as ViewType, label: 'Financeiro', icon: DollarSign },
-    { id: 'expenses' as ViewType, label: 'Despesas', icon: Receipt },
-    { id: 'ai-tools' as ViewType, label: 'Assistente IA', icon: BrainCircuit },
     { id: 'settings' as ViewType, label: 'Configurações', icon: Settings }
   ];
-
-  const navItems = enableRepertoire 
-    ? [...primaryNav, repertoireNav, ...secondaryNav] 
-    : [...primaryNav, ...secondaryNav];
 
   const handleNavClick = (viewId: ViewType) => {
     setCurrentView(viewId);
@@ -101,7 +85,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
             <button
               onClick={onToggleCollapse}
-              className="p-2 rounded-lg hover:bg-slate-800 transition-colors hidden lg:block"
+              className="p-2 rounded-lg hover:bg-slate-800 transition-colors hidden lg:block text-slate-400 hover:text-white"
               title={isCollapsed ? "Expandir menu" : "Recolher menu"}
               aria-label={isCollapsed ? "Expandir menu" : "Recolher menu"}
             >
@@ -124,7 +108,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   transition-all duration-200
                   ${isCollapsed ? "justify-center" : ""}
                   ${isActive 
-                    ? "bg-blue-600 text-white shadow-md" 
+                    ? "bg-blue-600 text-white shadow-md font-semibold" 
                     : "text-slate-300 hover:bg-slate-800 hover:text-white"
                   }
                 `}
@@ -133,7 +117,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               >
                 <Icon size={20} className="flex-shrink-0" />
                 {!isCollapsed && (
-                  <span className="font-medium text-sm">{item.label}</span>
+                  <span className="text-sm font-medium">{item.label}</span>
                 )}
               </button>
             );
@@ -158,7 +142,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate text-white">{userName}</p>
-                <p className="text-xs text-slate-400">Professor</p>
+                <p className="text-xs text-slate-400">Professora de Inglês</p>
               </div>
             </div>
           )}

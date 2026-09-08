@@ -1,89 +1,83 @@
-# 🎓 Ms Carelli - Painel de Gestão Pedagógica (Clone Profeu)
+# 🎓 Ms Carelli - Plataforma Pedagógica para Professora de Inglês
 
-Clone com fidelidade 1:1 da dashboard autenticada da plataforma **Profeu** (`https://app.aula.app.br/app/dashboard`), projetado com arquitetura modular, componentização moderna e alta performance para deploy automatizado no **Appwrite Sites** e versionado no **GitHub**.
+Sistema moderno de gestão pedagógica, planejamento de aulas e controle financeiro especializado para **Professora Particular de Inglês**, construído com **React**, **TypeScript**, **Vite** e **Tailwind CSS**, com persistência local de dados e deploy automatizado no **Appwrite Sites**.
 
 ---
 
-## 📸 Demonstração Visual
+## 📸 Demonstração Visual das Telas
 
-| Desktop (1920x1080) | Mobile (390x844) |
+| Diário de Aulas (Planejamento & Histórico) | Agenda Estilo Google Agenda |
 | :---: | :---: |
-| ![Desktop Preview](public/dashboard-desktop.png) | ![Mobile Preview](public/dashboard-mobile.png) |
+| ![Diário de Aulas](public/diario-de-aulas.png) | ![Agenda](public/agenda-google.png) |
+
+| Gestão de Alunos (Study Planner & Class Plan) | Visão Geral (Dashboard do Dia) |
+| :---: | :---: |
+| ![Alunos](public/alunos-list.png) | ![Dashboard](public/dashboard-desktop.png) |
 
 ---
 
-## 🛠️ Tech Stack & Justificativa Técnica
+## 🚀 Funcionalidades Especializadas em Inglês
 
-Durante a fase de **Tech Stack Discovery** e inspeção da aplicação original em produção, foram identificados os seguintes padrões e dependências:
+1. **Diário de Aulas (Fidelidade 1:1 à Referência):**
+   - Filtro de privacidade por aluno.
+   - Acompanhamento de aulas passadas pendentes de registro pedagógico.
+   - Próximas aulas agendadas com acesso rápido.
+   - Histórico cronológico completo por aluno com lição de casa (*homework*), tópicos gramaticais e vocabulário.
+   - Botão para **Registro Manual de Aula**.
 
-- **Frontend Core:** **React 18/19** com **TypeScript** e **Vite** como bundler de última geração.
-- **Estilização:** **Tailwind CSS** com sistema de tokens slate (`bg-slate-900`, `bg-slate-50`, `border-slate-100`, etc.), garantindo carregamento atômico ultraleve (CSS compilado de ~22KB).
-- **Ícones:** **Lucide React** (mesma biblioteca utilizada pela aplicação original: `LayoutDashboard`, `Users`, `Calendar`, `BookOpen`, `Clock`, etc.).
-- **Deploy Target:** **Appwrite Sites** (SPA estático com fallback para `index.html`).
+2. **Agenda Estilo Google Agenda:**
+   - Visualização por **Semana**, **Dia** ou **Mês**.
+   - Grade horária das 07:00 às 21:00 com blocos visuais proporcionais à duração.
+   - Cores intuitivas por status (Realizada em verde, Agendada em azul, Cancelada em vermelho).
+   - Clique em qualquer espaço vazio para agendar aula naquele horário.
+   - Clique em qualquer aula existente para editar horários, status ou remover.
 
----
+3. **Gestão de Alunos & Planos de Aprendizado:**
+   - Cadastro completo de alunos com nível de inglês (A1 até C2 / Business / IELTS).
+   - Coluna de **Horários Padrões de Aula** e valor individual por hora.
+   - Botão **Study Planner**: Cronograma de estudos independente do aluno (horas semanais, metas, podcasts, aplicativos recomendados e rotina).
+   - Botão **Class Plan**: Plano de aula pedagógico estruturado (unidade atual, foco gramatical, vocabulário, lição de casa e objetivos).
+   - Edição e exclusão com persistência de dados em tempo real.
 
-## 📐 Arquitetura de Informação & Componentes
+4. **Visão Geral (Dashboard):**
+   - Todos os horários da "Agenda Detalhada de Hoje" e da "Visão da Semana" são 100% clicáveis e editáveis.
+   - Métricas em tempo real recalculadas conforme o banco de dados.
 
-O projeto foi estruturado de forma modular e desacoplada:
+5. **Controle Financeiro 100% Editável:**
+   - Demonstrativo de faturamento mensal por aluno.
+   - Valores por hora e quantidade de aulas editáveis diretamente na tabela.
+   - Alternância com 1 clique entre **"Pago"** e **"Pendente"**.
+   - Totais consolidados de receita recebida, previsão mensal e valores a receber.
 
-```text
-├── public/
-│   ├── _redirects              # Configuração de SPA routing
-│   ├── dashboard-desktop.png   # Screenshot Desktop em alta resolução
-│   └── dashboard-mobile.png    # Screenshot Mobile em alta resolução
-├── src/
-│   ├── components/
-│   │   ├── dashboard/
-│   │   │   ├── DashboardView.tsx   # View unificada da Visão do Dia
-│   │   │   ├── StatCards.tsx       # Cards de Alunos e Horas de Aula (Hoje)
-│   │   │   ├── TodaySchedule.tsx   # Agenda detalhada de hoje com status
-│   │   │   └── WeekView.tsx        # Grade semanal interativa (Seg a Sex)
-│   │   ├── layout/
-│   │   │   ├── MobileHeader.tsx    # Cabeçalho superior responsivo mobile
-│   │   │   └── Sidebar.tsx         # Barra lateral retrátil (w-64 / w-16)
-│   │   ├── finance/
-│   │   │   └── FinanceView.tsx     # Visão financeira e faturamento
-│   │   ├── schedule/
-│   │   │   └── ScheduleView.tsx    # Agenda cronológica completa
-│   │   ├── settings/
-│   │   │   └── SettingsView.tsx    # Perfil do professor e preferências
-│   │   └── students/
-│   │       └── StudentsView.tsx    # Lista e filtros de alunos
-│   ├── data/
-│   │   └── mockData.ts             # Dados mockados inteligentes
-│   ├── types/
-│   │   └── index.ts                # Definições de tipos TypeScript
-│   ├── App.tsx                     # Layout mestre e orquestrador de estado
-│   ├── index.css                   # Diretivas Tailwind e estilização base
-│   └── main.tsx                    # Ponto de entrada React
-├── appwrite.json                   # Especificação de deploy Appwrite
-├── package.json                    # Scripts e dependências
-├── tailwind.config.js              # Configuração de tema do Tailwind
-├── tsconfig.json                   # Configuração de compilação TS
-└── vite.config.ts                  # Configuração do Vite
-```
+6. **Banco de Dados & Persistência Local:**
+   - Serviço desacoplado `db.ts` utilizando armazenamento local resiliente e tipado.
+   - Zero dados fictícios forçados: o sistema armazena os dados reais cadastrados pela professora.
 
 ---
 
-## 🚀 Como Rodar Localmente
+## 🛠️ Tecnologias Utilizadas
 
-### Pré-requisitos
-- Node.js (v18+)
-- npm (v9+)
+- **Frontend:** React 18, TypeScript, Vite 6
+- **Estilização:** Tailwind CSS 3 (tema slate com cores pedagógicas)
+- **Ícones:** Lucide React
+- **Persistência:** Local Database Service (`localStorage` estruturado com schemas tipados)
+- **Deploy:** Appwrite Sites (com roteamento SPA e fallback `index.html`)
 
-### Instalação e Execução
+---
+
+## 💻 Execução Local
+
 ```bash
-# 1. Instalar dependências
+# Instalar dependências
 npm install
 
-# 2. Executar ambiente de desenvolvimento
+# Iniciar servidor de desenvolvimento
 npm run dev
 
-# 3. Gerar build de produção otimizada
+# Gerar build de produção
 npm run build
 
-# 4. Pré-visualizar build local
+# Pré-visualizar build de produção
 npm run preview
 ```
 
@@ -91,37 +85,13 @@ npm run preview
 
 ## 🌐 Deploy no Appwrite Sites (Passo a Passo)
 
-O **Appwrite Sites** permite hospedar Single Page Applications diretamente conectadas ao seu repositório GitHub.
-
-### 1. Conectar o Repositório no GitHub
-Se ainda não enviou os arquivos para o repositório remoto:
-```bash
-git remote add origin https://github.com/isabellecarelli/mscarelli.git
-git branch -M main
-git push -u origin main
-```
-
-### 2. Criar o Site no Console do Appwrite
-1. Acesse o seu console: [https://cloud.appwrite.io/](https://cloud.appwrite.io/) (ou sua instância self-hosted).
-2. Selecione ou crie seu Projeto Appwrite.
-3. No menu lateral esquerdo, clique em **Sites** (ou **Deploy > Sites**).
-4. Clique no botão **Create Site** / **New Site**.
-5. Conecte com o seu GitHub e selecione o repositório:
-   - **Repository:** `isabellecarelli/mscarelli`
-   - **Branch:** `main`
-6. Preencha as configurações de build:
-   - **Framework:** `Vite` (ou `React`)
+1. No Console do Appwrite (**Sites** > **Create Site**):
+2. Conecte com seu repositório: `isabellecarelli/mscarelli` na branch `main`.
+3. Preencha as configurações de build:
+   - **Framework:** `Vite`
    - **Root Directory:** `./`
    - **Install Command:** `npm install`
    - **Build Command:** `npm run build`
    - **Output Directory:** `dist`
-7. Em **Routing / Fallback**: configure para `index.html` (para garantir o roteamento SPA das abas).
-8. Clique em **Deploy**! O Appwrite irá clonar, instalar dependências, compilar o projeto e disponibilizar uma URL com SSL automático.
-
----
-
-## 🔒 Segurança e Boas Práticas
-
-- Nenhum token sensível ou chave de autenticação privada foi fixado no código estático.
-- O arquivo `.gitignore` previne a submissão de `node_modules`, `dist` e variáveis de ambiente locais.
-- Arquitetura 100% pronta para plugar no backend do Appwrite (Appwrite Auth, Databases e Storage).
+   - **Fallback:** `index.html`
+4. Clique em **Deploy**. O deploy será concluído e uma URL com certificado SSL será gerada.
