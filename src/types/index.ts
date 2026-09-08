@@ -16,15 +16,33 @@ export type EnglishLevel =
   | 'Inglês para Negócios'
   | 'Preparatório (IELTS/TOEFL)';
 
+export type BillingModel = 'MENSALIDADE_FIXA' | 'POR_HORA';
+
+export interface RecurringScheduleSlot {
+  dayOfWeek: number; // 0 = Domingo, 1 = Segunda, 2 = Terça, 3 = Quarta, 4 = Quinta, 5 = Sexta, 6 = Sábado
+  time: string; // "14:00"
+  durationMinutes: number; // 60
+}
+
 export interface Student {
   id: string;
   name: string;
-  email?: string;
   phone?: string;
-  address?: string;
   level: EnglishLevel;
-  defaultSchedule: string; // Ex: "Terças e Quintas às 14:00"
-  hourlyRate: number; // R$ por hora/aula
+  
+  // Modelo de Cobrança
+  billingModel: BillingModel;
+  billingAmount: number; // Valor da Mensalidade Fixa (vence dia 10) OU Valor por Hora (paga pós-aula)
+  
+  // Agenda Padrão (Recorrência)
+  hasRecurringSchedule: boolean;
+  recurringSlots: RecurringScheduleSlot[];
+  defaultScheduleText: string; // Ex: "Terças e Quintas às 14:00"
+  
+  // Links Externos
+  studyPlannerUrl?: string;
+  classPlanUrl?: string;
+  
   isActive: boolean;
   notes?: string;
   createdAt: string;
@@ -41,6 +59,7 @@ export interface Lesson {
   notes?: string;
   homework?: string;
   price?: number;
+  paid?: boolean; // Para cobrança por hora
 }
 
 export interface ClassPlan {
@@ -66,11 +85,14 @@ export interface StudyPlanner {
 export interface FinanceRecord {
   id: string;
   studentId: string;
-  month: string; // Ex: "Setembro 2026"
-  hourlyRate: number;
+  month: string;
+  billingModel: BillingModel;
+  hourlyRate?: number;
+  billingAmount: number;
   classesCount: number;
   totalAmount: number;
   status: 'Pago' | 'Pendente';
+  dueDate: string; // "Dia 10" ou "Pós-aula"
   paymentDate?: string;
   notes?: string;
 }

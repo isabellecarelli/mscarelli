@@ -1,6 +1,7 @@
 import { 
   Student, 
   Lesson, 
+  LessonStatus,
   ClassPlan, 
   StudyPlanner, 
   FinanceRecord, 
@@ -8,12 +9,12 @@ import {
 } from '../types';
 
 const STORAGE_KEYS = {
-  STUDENTS: 'mscarelli_students_v2',
-  LESSONS: 'mscarelli_lessons_v2',
-  CLASS_PLANS: 'mscarelli_class_plans_v2',
-  STUDY_PLANNERS: 'mscarelli_study_planners_v2',
-  FINANCE: 'mscarelli_finance_v2',
-  SETTINGS: 'mscarelli_settings_v2'
+  STUDENTS: 'mscarelli_students_v3',
+  LESSONS: 'mscarelli_lessons_v3',
+  CLASS_PLANS: 'mscarelli_class_plans_v3',
+  STUDY_PLANNERS: 'mscarelli_study_planners_v3',
+  PAYMENTS: 'mscarelli_payments_v3',
+  SETTINGS: 'mscarelli_settings_v3'
 };
 
 export const defaultSettings: TeacherSettings = {
@@ -49,7 +50,12 @@ class DatabaseService {
       updated = [student, ...students];
     }
     localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(updated));
-    this.syncFinanceWithStudents(updated);
+
+    // Se o aluno possui recorrência ativa, gera automaticamente as próximas aulas do mês corrente
+    if (student.isActive && student.hasRecurringSchedule && student.recurringSlots && student.recurringSlots.length > 0) {
+      this.generateUpcomingLessonsForStudent(student);
+    }
+
     return updated;
   }
 
@@ -95,6 +101,135 @@ class DatabaseService {
     return lessons;
   }
 
+  // --- AUTOMATIC RECURRING LESSON GENERATION ---
+  /**
+   * Gera as próximas aulas restantes do mês atual para um aluno específico recém-cadastrado/editado.
+   */
+  generateUpcomingLessonsForStudent(student: Student): number {
+    if (!student.hasRecurringSchedule || !student.recurringSlots || student.recurringSlots.length === 0) {
+      return 0;
+    }
+
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth();
+    
+    // Último dia do mês
+    const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+    const currentLessons = this.getLessons();
+    const newLessons: Lesson[] = [];
+
+    for (let day = today.getDate(); day <= lastDayOfMonth; day++) {
+      const dayDate = new Date(currentYear, currentMonth, day);
+      const dayOfWeek = dayDate.getDay();
+
+      // Verifica se há slot recorrente neste dia da semana
+      const matchingSlots = student.recurringSlots.filter(s => s.dayOfWeek === dayOfWeek);
+
+      for (const slot of matchingSlots) {
+        const [hoursStr, minutesStr] = slot.time.split(':');
+        const lessonDate = new Date(currentYear, currentMonth, day, Number(hoursStr || 14), Number(minutesStr || 0), 0, 0);
+
+        // Se a data já passou hoje, ignora
+        if (lessonDate < today) continue;
+
+        const dateISO = lessonDate.toISOString();
+
+        // Evita duplicidade: verifica se já existe aula para este aluno neste mesmo horário
+        const alreadyExists = currentLessons.some(l => 
+          l.studentId === student.id && 
+          new Date(l.date).getTime() === lessonDate.getTime()
+        ) || newLessons.some(l => 
+          l.studentId === student.id && 
+          new Date(l.date).getTime() === lessonDate.getTime()
+        );
+
+        if (!alreadyExists) {
+          newLessons.push({
+            id: `lesson-rec-${student.id}-${lessonDate.getTime()}`,
+            studentId: student.id,
+            date: dateISO,
+            durationMinutes: slot.durationMinutes || 60,
+            subject: 'Inglês',
+            topic: 'Aula Regular',
+            status: LessonStatus.SCHEDULED,
+            price: student.billingModel === 'POR_HORA' ? student.billingAmount : undefined
+          });
+        }
+      }
+    }
+
+    if (newLessons.length > 0) {
+      const updatedLessons = [...newLessons, ...currentLessons];
+      localStorage.setItem(STORAGE_KEYS.LESSONS, JSON.stringify(updatedLessons));
+    }
+
+    return newLessons.length;
+  }
+
+  /**
+   * Gera todas as aulas do mês para todos os alunos recorrentes ativos.
+   * Evita duplicidade verificando horários já existentes.
+   */
+  generateRecurringLessonsForMonth(targetDate: Date = new Date()): { createdCount: number; existingCount: number } {
+    const students = this.getStudents().filter(s => s.isActive && s.hasRecurringSchedule && s.recurringSlots && s.recurringSlots.length > 0);
+    const currentLessons = this.getLessons();
+
+    const year = targetDate.getFullYear();
+    const month = targetDate.getMonth();
+    const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
+
+    let createdCount = 0;
+    let existingCount = 0;
+    const newLessons: Lesson[] = [];
+
+    students.forEach(student => {
+      for (let day = 1; day <= lastDayOfMonth; day++) {
+        const dayDate = new Date(year, month, day);
+        const dayOfWeek = dayDate.getDay();
+
+        const matchingSlots = student.recurringSlots.filter(s => s.dayOfWeek === dayOfWeek);
+
+        for (const slot of matchingSlots) {
+          const [hoursStr, minutesStr] = slot.time.split(':');
+          const lessonDate = new Date(year, month, day, Number(hoursStr || 14), Number(minutesStr || 0), 0, 0);
+          const dateISO = lessonDate.toISOString();
+
+          const alreadyExists = currentLessons.some(l => 
+            l.studentId === student.id && 
+            new Date(l.date).getTime() === lessonDate.getTime()
+          ) || newLessons.some(l => 
+            l.studentId === student.id && 
+            new Date(l.date).getTime() === lessonDate.getTime()
+          );
+
+          if (alreadyExists) {
+            existingCount++;
+          } else {
+            createdCount++;
+            newLessons.push({
+              id: `lesson-rec-${student.id}-${lessonDate.getTime()}`,
+              studentId: student.id,
+              date: dateISO,
+              durationMinutes: slot.durationMinutes || 60,
+              subject: 'Inglês',
+              topic: 'Aula Regular',
+              status: LessonStatus.SCHEDULED,
+              price: student.billingModel === 'POR_HORA' ? student.billingAmount : undefined
+            });
+          }
+        }
+      }
+    });
+
+    if (newLessons.length > 0) {
+      const updatedLessons = [...newLessons, ...currentLessons];
+      localStorage.setItem(STORAGE_KEYS.LESSONS, JSON.stringify(updatedLessons));
+    }
+
+    return { createdCount, existingCount };
+  }
+
   // --- CLASS PLANS ---
   getClassPlan(studentId: string): ClassPlan {
     try {
@@ -102,11 +237,11 @@ class DatabaseService {
       const plans: Record<string, ClassPlan> = data ? JSON.parse(data) : {};
       return plans[studentId] || {
         studentId,
-        currentUnit: 'Unit 1 - Introduction & Everyday Routines',
-        grammarTopics: 'Simple Present vs Present Continuous; Question formation',
-        vocabularyTopics: 'Daily habits, hobbies, profession and workplace expressions',
-        homework: 'Complete exercises 1 to 4 on page 12 and write a 100-word paragraph about your day',
-        nextClassObjectives: 'Practice speaking with focus on fluency and pronunciation of -ed endings',
+        currentUnit: 'Unit 1 - Everyday Routines & Speaking',
+        grammarTopics: 'Present Simple vs Present Continuous; Question tags',
+        vocabularyTopics: 'Daily habits, hobbies, profession and business expressions',
+        homework: 'Complete exercises 1 to 4 on page 12 and record a 1-minute audio',
+        nextClassObjectives: 'Practice speaking with focus on fluency and pronunciation',
         lastUpdated: new Date().toISOString()
       };
     } catch (e) {
@@ -143,8 +278,8 @@ class DatabaseService {
         studentId,
         weeklyHoursTarget: 4,
         learningGoals: 'Alcançar confiança em reuniões corporativas e apresentações em inglês.',
-        recommendedMaterials: 'Podcasts (6 Minute English, BBC), Livro English Grammar in Use, App Anki.',
-        weeklyRoutine: '15 min de vocabulário diário no Anki + 1 episódio de podcast às terças e quintas.',
+        recommendedMaterials: 'Podcasts (BBC 6 Minute English), Livro English Grammar in Use, App Anki.',
+        weeklyRoutine: '15 min de vocabulário diário + 1 episódio de podcast às terças e quintas.',
         notes: 'Focar na pronúncia do "th" e na entonação natural.',
         lastUpdated: new Date().toISOString()
       };
@@ -173,73 +308,28 @@ class DatabaseService {
     }
   }
 
-  // --- FINANCE RECORDS ---
-  getFinanceRecords(): FinanceRecord[] {
+  // --- PAYMENT STATUS RECORDS ---
+  getPayments(): Record<string, { status: 'Pago' | 'Pendente'; paymentDate?: string; notes?: string }> {
     try {
-      const data = localStorage.getItem(STORAGE_KEYS.FINANCE);
-      if (data) return JSON.parse(data);
-      
-      // Auto-generate from students if empty
-      const students = this.getStudents();
-      const currentMonth = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-      const initialRecords: FinanceRecord[] = students.map(s => ({
-        id: `fin-${s.id}`,
-        studentId: s.id,
-        month: currentMonth,
-        hourlyRate: s.hourlyRate || 120,
-        classesCount: 4,
-        totalAmount: (s.hourlyRate || 120) * 4,
-        status: 'Pendente',
-        notes: 'Mensalidade regular'
-      }));
-      localStorage.setItem(STORAGE_KEYS.FINANCE, JSON.stringify(initialRecords));
-      return initialRecords;
+      const data = localStorage.getItem(STORAGE_KEYS.PAYMENTS);
+      return data ? JSON.parse(data) : {};
     } catch (e) {
-      console.error('Error reading finance records', e);
-      return [];
+      console.error('Error reading payments', e);
+      return {};
     }
   }
 
-  saveFinanceRecord(record: FinanceRecord): FinanceRecord[] {
-    const records = this.getFinanceRecords();
-    const index = records.findIndex(r => r.id === record.id);
-    let updated: FinanceRecord[];
-    if (index >= 0) {
-      updated = [...records];
-      updated[index] = record;
-    } else {
-      updated = [record, ...records];
-    }
-    localStorage.setItem(STORAGE_KEYS.FINANCE, JSON.stringify(updated));
-    return updated;
-  }
-
-  syncFinanceWithStudents(students: Student[]): void {
-    const currentRecords = this.getFinanceRecords();
-    const currentMonth = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-    
-    let hasChanges = false;
-    const updated = [...currentRecords];
-
-    students.forEach(s => {
-      const existing = updated.find(r => r.studentId === s.id);
-      if (!existing && s.isActive) {
-        hasChanges = true;
-        updated.push({
-          id: `fin-${s.id}-${Date.now()}`,
-          studentId: s.id,
-          month: currentMonth,
-          hourlyRate: s.hourlyRate || 120,
-          classesCount: 4,
-          totalAmount: (s.hourlyRate || 120) * 4,
-          status: 'Pendente',
-          notes: 'Mensalidade regular'
-        });
-      }
-    });
-
-    if (hasChanges) {
-      localStorage.setItem(STORAGE_KEYS.FINANCE, JSON.stringify(updated));
+  savePaymentStatus(recordKey: string, status: 'Pago' | 'Pendente', notes?: string): void {
+    try {
+      const payments = this.getPayments();
+      payments[recordKey] = {
+        status,
+        paymentDate: status === 'Pago' ? new Date().toLocaleDateString('pt-BR') : undefined,
+        notes
+      };
+      localStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(payments));
+    } catch (e) {
+      console.error('Error saving payment status', e);
     }
   }
 

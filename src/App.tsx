@@ -20,16 +20,21 @@ export const App: React.FC = () => {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [teacherSettings, setTeacherSettings] = useState<TeacherSettings>(db.getSettings());
 
-  useEffect(() => {
+  const refreshAllData = () => {
     setStudents(db.getStudents());
     setLessons(db.getLessons());
     setTeacherSettings(db.getSettings());
+  };
+
+  useEffect(() => {
+    refreshAllData();
   }, []);
 
   // --- CRUD HANDLERS WITH DB PERSISTENCE ---
   const handleSaveStudent = (student: Student) => {
     const updated = db.saveStudent(student);
     setStudents(updated);
+    setLessons(db.getLessons()); // Recarrega aulas caso tenha gerado recorrências
   };
 
   const handleDeleteStudent = (id: string) => {
@@ -80,6 +85,7 @@ export const App: React.FC = () => {
             students={students}
             onSaveLesson={handleSaveLesson}
             onDeleteLesson={handleDeleteLesson}
+            onRefreshLessons={() => setLessons(db.getLessons())}
           />
         );
       case 'lesson-log':
@@ -94,6 +100,7 @@ export const App: React.FC = () => {
         return (
           <FinanceView
             students={students}
+            lessons={lessons}
           />
         );
       case 'settings':

@@ -5,20 +5,22 @@ import {
   Plus, 
   Calendar as CalendarIcon, 
   Clock, 
-  User, 
+  Sparkles,
   X, 
   Trash2, 
   Check, 
-  MapPin, 
+  AlertCircle,
   CalendarDays 
 } from 'lucide-react';
 import { Student, Lesson, LessonStatus } from '../../types';
+import { db } from '../../services/db';
 
 interface ScheduleViewProps {
   lessons: Lesson[];
   students: Student[];
   onSaveLesson: (lesson: Lesson) => void;
   onDeleteLesson: (id: string) => void;
+  onRefreshLessons?: () => void;
 }
 
 type CalendarViewMode = 'week' | 'day' | 'month';
@@ -27,17 +29,19 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
   lessons,
   students,
   onSaveLesson,
-  onDeleteLesson
+  onDeleteLesson,
+  onRefreshLessons
 }) => {
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [viewMode, setViewMode] = useState<CalendarViewMode>('week');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLesson, setEditingLesson] = useState<Partial<Lesson> | null>(null);
+  const [notification, setNotification] = useState<string | null>(null);
 
-  // Time slots from 07:00 to 21:00
-  const hours = Array.from({ length: 15 }, (_, i) => i + 7);
+  // Time slots strictly from 08:00 to 21:00
+  const hours = Array.from({ length: 14 }, (_, i) => i + 8);
 
-  // Week calculation (Sunday to Saturday or Monday to Friday)
+  // Week calculation (Monday start)
   const getWeekDays = (baseDate: Date) => {
     const d = new Date(baseDate);
     const day = d.getDay();
@@ -70,6 +74,26 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
     setCurrentDate(new Date());
   };
 
+  // --- GENERATE RECURRING LESSONS AUTOMATICALLY ---
+  const handleGenerateMonthLessons = () => {
+    const result = db.generateRecurringLessonsForMonth(currentDate);
+    if (onRefreshLessons) {
+      onRefreshLessons();
+    }
+    const monthName = currentDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    if (result.createdCount > 0) {
+      setNotification(`🎉 ${result.createdCount} aulas geradas com sucesso para ${monthName}! (${result.existingCount} já existiam e foram mantidas sem duplicação)`);
+    } else if (result.existingCount > 0) {
+      setNotification(`ℹ️ Todas as aulas dos alunos recorrentes já estavam criadas para ${monthName} (${result.existingCount} verificadas).`);
+    } else {
+      setNotification(`ℹ️ Nenhum aluno com agenda padrão recorrente cadastrado no momento. Cadastre alunos com recorrência para gerar automaticamente.`);
+    }
+
+    setTimeout(() => {
+      setNotification(null);
+    }, 6000);
+  };
+
   const handleOpenNewLesson = (prefillDate?: Date, prefillHour?: number) => {
     let dateObj = prefillDate ? new Date(prefillDate) : new Date(currentDate);
     if (prefillHour !== undefined) {
@@ -78,13 +102,16 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
       dateObj.setHours(10, 0, 0, 0);
     }
 
+    // Default to first active student
+    const defaultStudent = students.find(s => s.isActive) || students[0];
+
     setEditingLesson({
       id: `lesson-${Date.now()}`,
-      studentId: students[0]?.id || '',
+      studentId: defaultStudent?.id || '',
       date: dateObj.toISOString(),
       durationMinutes: 60,
       subject: 'Inglês',
-      topic: 'Conversação & Gramática',
+      topic: 'Aula Regular',
       status: LessonStatus.SCHEDULED,
       notes: ''
     });
@@ -101,6 +128,8 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
     e.preventDefault();
     if (!editingLesson || !editingLesson.studentId) return;
 
+    const student = students.find(s => s.id === editingLesson.studentId);
+
     const lessonToSave: Lesson = {
       id: editingLesson.id || `lesson-${Date.now()}`,
       studentId: editingLesson.studentId,
@@ -110,7 +139,8 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
       topic: editingLesson.topic || 'Aula Regular',
       status: (editingLesson.status as LessonStatus) || LessonStatus.SCHEDULED,
       notes: editingLesson.notes || '',
-      homework: editingLesson.homework || ''
+      homework: editingLesson.homework || '',
+      price: student?.billingModel === 'POR_HORA' ? student.billingAmount : undefined
     };
 
     onSaveLesson(lessonToSave);
@@ -137,6 +167,19 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
 
   return (
     <div className="space-y-4">
+      {/* Notification Toast */}
+      {notification && (
+        <div className="bg-blue-600 text-white px-4 py-3 rounded-xl text-sm font-medium shadow-md flex items-center justify-between animate-fade-in">
+          <span>{notification}</span>
+          <button 
+            onClick={() => setNotification(null)}
+            className="text-white/80 hover:text-white p-1"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       {/* Top Google Calendar Header Toolbar */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -169,7 +212,17 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
           </h2>
         </div>
 
-        <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
+        <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-between md:justify-end">
+          {/* BOTÃO REQUERIDO: Gerar aulas do mês automaticamente */}
+          <button
+            onClick={handleGenerateMonthLessons}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-all hover:scale-105"
+            title="Gera todas as aulas do mês atual para os alunos com agenda padrão recorrente, sem duplicar horários existentes"
+          >
+            <Sparkles size={16} />
+            Gerar aulas do mês automaticamente
+          </button>
+
           {/* View Mode Switcher */}
           <div className="bg-slate-100 p-1 rounded-lg flex items-center gap-1">
             <button
@@ -206,15 +259,15 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
 
           <button
             onClick={() => handleOpenNewLesson()}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors"
+            className="flex items-center gap-2 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors"
           >
-            <Plus size={18} />
+            <Plus size={16} />
             Nova Aula
           </button>
         </div>
       </div>
 
-      {/* VIEW: WEEK (Google Calendar Time Grid) */}
+      {/* VIEW: WEEK (Google Calendar Time Grid: 08:00 - 21:00) */}
       {viewMode === 'week' && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
           {/* Header Days Row */}
@@ -250,7 +303,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
             })}
           </div>
 
-          {/* Time Grid Scrollable Area */}
+          {/* Time Grid Scrollable Area (08:00 to 21:00) */}
           <div className="max-h-[680px] overflow-y-auto divide-y divide-slate-100">
             {hours.map((hour) => (
               <div key={hour} className="grid grid-cols-8 min-h-[64px] relative">
@@ -459,7 +512,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
             <form onSubmit={handleSaveModal} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                  Aluno
+                  Aluno *
                 </label>
                 <select
                   required
@@ -479,7 +532,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                    Data e Horário
+                    Data e Horário *
                   </label>
                   <input
                     type="datetime-local"
@@ -528,11 +581,11 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                  Tema / Tópico da Aula
+                  Tema / Conteúdo da Aula
                 </label>
                 <input
                   type="text"
-                  placeholder="Ex: Business English Vocabulary, Phrasal Verbs"
+                  placeholder="Ex: Conversação sobre viagens, Phrasal Verbs"
                   value={editingLesson.topic || ''}
                   onChange={(e) => setEditingLesson({ ...editingLesson, topic: e.target.value })}
                   className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:bg-white"

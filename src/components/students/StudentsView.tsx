@@ -4,7 +4,6 @@ import {
   Search, 
   Plus, 
   Phone, 
-  Mail, 
   Clock, 
   Edit, 
   Trash2, 
@@ -12,11 +11,21 @@ import {
   Check, 
   Target, 
   GraduationCap, 
-  BookOpen, 
-  Sparkles,
-  Save
+  ExternalLink,
+  Calendar,
+  DollarSign,
+  AlertCircle,
+  Save,
+  Link as LinkIcon
 } from 'lucide-react';
-import { Student, EnglishLevel, StudyPlanner, ClassPlan } from '../../types';
+import { 
+  Student, 
+  EnglishLevel, 
+  BillingModel, 
+  RecurringScheduleSlot,
+  StudyPlanner, 
+  ClassPlan 
+} from '../../types';
 import { db } from '../../services/db';
 
 interface StudentsViewProps {
@@ -36,6 +45,16 @@ const ENGLISH_LEVELS: EnglishLevel[] = [
   'Preparatório (IELTS/TOEFL)'
 ];
 
+const DAYS_OF_WEEK = [
+  { value: 1, label: 'Segunda-feira', short: 'Seg' },
+  { value: 2, label: 'Terça-feira', short: 'Ter' },
+  { value: 3, label: 'Quarta-feira', short: 'Qua' },
+  { value: 4, label: 'Quinta-feira', short: 'Qui' },
+  { value: 5, label: 'Sexta-feira', short: 'Sex' },
+  { value: 6, label: 'Sábado', short: 'Sáb' },
+  { value: 0, label: 'Domingo', short: 'Dom' }
+];
+
 export const StudentsView: React.FC<StudentsViewProps> = ({
   students,
   onSaveStudent,
@@ -48,6 +67,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
   const [isStudentModalOpen, setIsStudentModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Partial<Student> | null>(null);
 
+  // Fallback Internal Modal if no external URL
   const [isStudyPlannerOpen, setIsStudyPlannerOpen] = useState(false);
   const [currentStudyPlanner, setCurrentStudyPlanner] = useState<StudyPlanner | null>(null);
   const [activePlannerStudent, setActivePlannerStudent] = useState<Student | null>(null);
@@ -57,27 +77,46 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
   const [activePlanStudent, setActivePlanStudent] = useState<Student | null>(null);
 
   const filteredStudents = students.filter((s) => {
-    const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (s.email && s.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    const matchesSearch = 
+      s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (s.phone && s.phone.includes(searchTerm)) ||
-      s.level.toLowerCase().includes(searchTerm.toLowerCase());
+      s.level.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (s.defaultScheduleText && s.defaultScheduleText.toLowerCase().includes(searchTerm.toLowerCase()));
 
     if (filterActive === 'active') return matchesSearch && s.isActive;
     if (filterActive === 'inactive') return matchesSearch && !s.isActive;
     return matchesSearch;
   });
 
+  // --- HELPER TO FORMAT RECURRING SCHEDULE TEXT ---
+  const formatRecurringText = (slots: RecurringScheduleSlot[]): string => {
+    if (!slots || slots.length === 0) return 'Horário Flexível / Avulso';
+    const parts = slots.map(slot => {
+      const dayObj = DAYS_OF_WEEK.find(d => d.value === slot.dayOfWeek);
+      return `${dayObj ? dayObj.short : 'Dia'} às ${slot.time} (${slot.durationMinutes}min)`;
+    });
+    return parts.join(', ');
+  };
+
   // --- STUDENT MODAL HANDLERS ---
   const handleOpenNewStudent = () => {
+    const initialSlots: RecurringScheduleSlot[] = [
+      { dayOfWeek: 1, time: '14:00', durationMinutes: 60 },
+      { dayOfWeek: 3, time: '14:00', durationMinutes: 60 }
+    ];
+
     setEditingStudent({
       id: `student-${Date.now()}`,
       name: '',
-      email: '',
       phone: '',
-      address: '',
       level: 'Básico (A2)',
-      defaultSchedule: 'Terças e Quintas às 14:00',
-      hourlyRate: 120,
+      billingModel: 'MENSALIDADE_FIXA',
+      billingAmount: 480,
+      hasRecurringSchedule: true,
+      recurringSlots: initialSlots,
+      defaultScheduleText: formatRecurringText(initialSlots),
+      studyPlannerUrl: '',
+      classPlanUrl: '',
       isActive: true,
       notes: '',
       createdAt: new Date().toISOString()
@@ -86,23 +125,74 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
   };
 
   const handleOpenEditStudent = (student: Student) => {
-    setEditingStudent({ ...student });
+    setEditingStudent({
+      ...student,
+      recurringSlots: student.recurringSlots ? [...student.recurringSlots] : []
+    });
     setIsStudentModalOpen(true);
+  };
+
+  const handleAddSlot = () => {
+    if (!editingStudent) return;
+    const currentSlots = editingStudent.recurringSlots || [];
+    const newSlot: RecurringScheduleSlot = {
+      dayOfWeek: 2, // Terça
+      time: '15:00',
+      durationMinutes: 60
+    };
+    const updatedSlots = [...currentSlots, newSlot];
+    setEditingStudent({
+      ...editingStudent,
+      recurringSlots: updatedSlots,
+      defaultScheduleText: formatRecurringText(updatedSlots)
+    });
+  };
+
+  const handleRemoveSlot = (index: number) => {
+    if (!editingStudent || !editingStudent.recurringSlots) return;
+    const updatedSlots = editingStudent.recurringSlots.filter((_, i) => i !== index);
+    setEditingStudent({
+      ...editingStudent,
+      recurringSlots: updatedSlots,
+      defaultScheduleText: formatRecurringText(updatedSlots)
+    });
+  };
+
+  const handleUpdateSlot = (index: number, field: keyof RecurringScheduleSlot, value: any) => {
+    if (!editingStudent || !editingStudent.recurringSlots) return;
+    const updatedSlots = [...editingStudent.recurringSlots];
+    updatedSlots[index] = {
+      ...updatedSlots[index],
+      [field]: value
+    };
+    setEditingStudent({
+      ...editingStudent,
+      recurringSlots: updatedSlots,
+      defaultScheduleText: formatRecurringText(updatedSlots)
+    });
   };
 
   const handleSaveStudentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingStudent || !editingStudent.name) return;
 
+    const slots = editingStudent.hasRecurringSchedule ? (editingStudent.recurringSlots || []) : [];
+    const scheduleText = editingStudent.hasRecurringSchedule 
+      ? formatRecurringText(slots) 
+      : 'Horário Flexível / Avulso';
+
     const studentToSave: Student = {
       id: editingStudent.id || `student-${Date.now()}`,
-      name: editingStudent.name,
-      email: editingStudent.email || '',
+      name: editingStudent.name.trim(),
       phone: editingStudent.phone || '',
-      address: editingStudent.address || '',
       level: editingStudent.level || 'Básico (A2)',
-      defaultSchedule: editingStudent.defaultSchedule || 'A combinar',
-      hourlyRate: Number(editingStudent.hourlyRate) || 120,
+      billingModel: editingStudent.billingModel || 'MENSALIDADE_FIXA',
+      billingAmount: Number(editingStudent.billingAmount) || (editingStudent.billingModel === 'MENSALIDADE_FIXA' ? 480 : 120),
+      hasRecurringSchedule: !!editingStudent.hasRecurringSchedule,
+      recurringSlots: slots,
+      defaultScheduleText: scheduleText,
+      studyPlannerUrl: editingStudent.studyPlannerUrl?.trim() || '',
+      classPlanUrl: editingStudent.classPlanUrl?.trim() || '',
       isActive: editingStudent.isActive !== false,
       notes: editingStudent.notes || '',
       createdAt: editingStudent.createdAt || new Date().toISOString()
@@ -114,17 +204,34 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
   };
 
   const handleDelete = (id: string, name: string) => {
-    if (confirm(`Deseja realmente remover o aluno "${name}" do sistema? Todas as aulas e registros vinculados serão excluídos.`)) {
+    if (confirm(`Deseja realmente excluir o aluno "${name}"? Todas as aulas e registros vinculados serão removidos.`)) {
       onDeleteStudent(id);
     }
   };
 
-  // --- STUDY PLANNER HANDLERS ---
+  // --- EXTERNAL LINKS OR MODAL OPENERS ---
   const handleOpenStudyPlanner = (student: Student) => {
-    setActivePlannerStudent(student);
-    const planner = db.getStudyPlanner(student.id);
-    setCurrentStudyPlanner(planner);
-    setIsStudyPlannerOpen(true);
+    if (student.studyPlannerUrl && student.studyPlannerUrl.startsWith('http')) {
+      window.open(student.studyPlannerUrl, '_blank', 'noopener,noreferrer');
+    } else {
+      // Abre modal interno se não tiver link cadastrado
+      setActivePlannerStudent(student);
+      const planner = db.getStudyPlanner(student.id);
+      setCurrentStudyPlanner(planner);
+      setIsStudyPlannerOpen(true);
+    }
+  };
+
+  const handleOpenClassPlan = (student: Student) => {
+    if (student.classPlanUrl && student.classPlanUrl.startsWith('http')) {
+      window.open(student.classPlanUrl, '_blank', 'noopener,noreferrer');
+    } else {
+      // Abre modal interno se não tiver link cadastrado
+      setActivePlanStudent(student);
+      const plan = db.getClassPlan(student.id);
+      setCurrentClassPlan(plan);
+      setIsClassPlanOpen(true);
+    }
   };
 
   const handleSaveStudyPlanner = (e: React.FormEvent) => {
@@ -132,15 +239,6 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
     if (!currentStudyPlanner) return;
     db.saveStudyPlanner(currentStudyPlanner);
     setIsStudyPlannerOpen(false);
-    alert('Study Planner atualizado com sucesso!');
-  };
-
-  // --- CLASS PLAN HANDLERS ---
-  const handleOpenClassPlan = (student: Student) => {
-    setActivePlanStudent(student);
-    const plan = db.getClassPlan(student.id);
-    setCurrentClassPlan(plan);
-    setIsClassPlanOpen(true);
   };
 
   const handleSaveClassPlan = (e: React.FormEvent) => {
@@ -148,7 +246,6 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
     if (!currentClassPlan) return;
     db.saveClassPlan(currentClassPlan);
     setIsClassPlanOpen(false);
-    alert('Class Plan atualizado com sucesso!');
   };
 
   return (
@@ -161,7 +258,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
             Alunos de Inglês
           </h2>
           <p className="text-slate-500 text-sm mt-1">
-            Gestão de alunos, horários padrões, Study Planner e Class Plan
+            Gestão de alunos, horários padrões de aula, Study Planner e Class Plan
           </p>
         </div>
 
@@ -180,7 +277,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
           <Search size={18} className="absolute left-3 top-3 text-slate-400" />
           <input
             type="text"
-            placeholder="Buscar por nome, e-mail, nível..."
+            placeholder="Buscar por nome, telefone, nível..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
@@ -221,16 +318,16 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
         </div>
       </div>
 
-      {/* TABLE: Lista de Alunos com colunas especificadas */}
+      {/* TABLE: Lista de Alunos */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
         {filteredStudents.length === 0 ? (
           <div className="p-12 text-center">
-            <div className="w-16 h-16 rounded-full bg-blue-50 text-blue-400 flex items-center justify-center mx-auto mb-4">
+            <div className="w-16 h-16 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center mx-auto mb-4">
               <Users size={32} />
             </div>
             <h3 className="text-lg font-bold text-slate-700">Nenhum aluno cadastrado</h3>
             <p className="text-sm text-slate-400 max-w-md mx-auto mt-1 mb-6">
-              Comece cadastrando seu primeiro aluno de inglês para liberar o diário de aulas, agenda e planos de aula.
+              Comece cadastrando seu primeiro aluno de inglês para liberar o diário de aulas, agenda e controle financeiro.
             </p>
             <button
               onClick={handleOpenNewStudent}
@@ -247,6 +344,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                 <tr className="border-b border-slate-200 bg-slate-50/75 text-[11px] font-bold uppercase text-slate-500 tracking-wider">
                   <th className="py-3.5 px-4">Aluno</th>
                   <th className="py-3.5 px-4">Horários Padrões</th>
+                  <th className="py-3.5 px-4">Modelo de Cobrança</th>
                   <th className="py-3.5 px-4">Status</th>
                   <th className="py-3.5 px-4 text-center">Study Planner</th>
                   <th className="py-3.5 px-4 text-center">Class Plan</th>
@@ -279,15 +377,37 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                       </div>
                     </td>
 
-                    {/* Horários Padrões de Aula */}
+                    {/* Coluna: Horários Padrões de Aula */}
                     <td className="py-3.5 px-4">
                       <div className="flex items-center gap-1.5 text-slate-700 font-medium text-xs">
                         <Clock size={14} className="text-slate-400 flex-shrink-0" />
-                        <span>{student.defaultSchedule || 'A definir'}</span>
+                        <span className={student.hasRecurringSchedule ? 'text-slate-800' : 'text-slate-400 italic'}>
+                          {student.defaultScheduleText || 'Horário Flexível / Avulso'}
+                        </span>
                       </div>
-                      <span className="text-[11px] text-slate-400 block mt-0.5">
-                        R$ {student.hourlyRate?.toFixed(2) || '120,00'}/hora
-                      </span>
+                    </td>
+
+                    {/* Coluna: Modelo de Cobrança */}
+                    <td className="py-3.5 px-4">
+                      {student.billingModel === 'MENSALIDADE_FIXA' ? (
+                        <div>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            Mensalidade Fixa
+                          </span>
+                          <p className="text-[11px] text-slate-500 mt-0.5 font-medium">
+                            R$ {student.billingAmount.toFixed(2)} • Venc. dia 10
+                          </p>
+                        </div>
+                      ) : (
+                        <div>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                            Por hora
+                          </span>
+                          <p className="text-[11px] text-slate-500 mt-0.5 font-medium">
+                            R$ {student.billingAmount.toFixed(2)}/h • Pós-aula
+                          </p>
+                        </div>
+                      )}
                     </td>
 
                     {/* Status */}
@@ -303,37 +423,47 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                       </span>
                     </td>
 
-                    {/* Coluna Study Planner */}
+                    {/* Coluna: Study Planner */}
                     <td className="py-3.5 px-4 text-center">
                       <button
                         onClick={() => handleOpenStudyPlanner(student)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-semibold transition-all hover:scale-105"
-                        title="Abrir Cronograma de Estudos do Aluno"
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:scale-105 ${
+                          student.studyPlannerUrl
+                            ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-xs'
+                            : 'bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200'
+                        }`}
+                        title={student.studyPlannerUrl ? `Abrir link externo: ${student.studyPlannerUrl}` : 'Visualizar Study Planner do aluno'}
                       >
                         <Target size={14} />
-                        Study Planner
+                        <span>Study Planner</span>
+                        {student.studyPlannerUrl && <ExternalLink size={12} className="opacity-80" />}
                       </button>
                     </td>
 
-                    {/* Coluna Class Plan */}
+                    {/* Coluna: Class Plan */}
                     <td className="py-3.5 px-4 text-center">
                       <button
                         onClick={() => handleOpenClassPlan(student)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-semibold transition-all hover:scale-105"
-                        title="Abrir Plano de Aula do Aluno"
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:scale-105 ${
+                          student.classPlanUrl
+                            ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs'
+                            : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200'
+                        }`}
+                        title={student.classPlanUrl ? `Abrir link externo: ${student.classPlanUrl}` : 'Visualizar Class Plan do aluno'}
                       >
                         <GraduationCap size={14} />
-                        Class Plan
+                        <span>Class Plan</span>
+                        {student.classPlanUrl && <ExternalLink size={12} className="opacity-80" />}
                       </button>
                     </td>
 
-                    {/* Coluna Ações (Editar e Excluir) */}
+                    {/* Coluna: Ações */}
                     <td className="py-3.5 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         <button
                           onClick={() => handleOpenEditStudent(student)}
                           className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                          title="Editar dados do aluno"
+                          title="Editar informações do aluno"
                         >
                           <Edit size={16} />
                         </button>
@@ -354,14 +484,14 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
         )}
       </div>
 
-      {/* MODAL 1: CADASTRAR / EDITAR ALUNO */}
+      {/* MODAL: CADASTRAR / EDITAR ALUNO */}
       {isStudentModalOpen && editingStudent && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-xl space-y-4 max-h-[90vh] overflow-y-auto animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-xl space-y-5 max-h-[92vh] overflow-y-auto animate-fade-in">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <Users size={20} className="text-blue-600" />
-                {students.some(s => s.id === editingStudent.id) ? 'Editar Informações do Aluno' : 'Novo Aluno de Inglês'}
+                {students.some(s => s.id === editingStudent.id) ? 'Editar Aluno de Inglês' : 'Novo Aluno de Inglês'}
               </h3>
               <button
                 onClick={() => setIsStudentModalOpen(false)}
@@ -371,37 +501,25 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSaveStudentSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                  Nome Completo *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ex: Beatriz Lima"
-                  value={editingStudent.name || ''}
-                  onChange={(e) => setEditingStudent({ ...editingStudent, name: e.target.value })}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:bg-white"
-                />
-              </div>
-
+            <form onSubmit={handleSaveStudentSubmit} className="space-y-5">
+              {/* Informações Básicas (SEM E-mail e SEM Endereço) */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                    E-mail
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">
+                    Nome Completo do Aluno *
                   </label>
                   <input
-                    type="email"
-                    placeholder="aluno@email.com"
-                    value={editingStudent.email || ''}
-                    onChange={(e) => setEditingStudent({ ...editingStudent, email: e.target.value })}
+                    type="text"
+                    required
+                    placeholder="Ex: Beatriz Lima"
+                    value={editingStudent.name || ''}
+                    onChange={(e) => setEditingStudent({ ...editingStudent, name: e.target.value })}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:bg-white"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">
                     WhatsApp / Telefone
                   </label>
                   <input
@@ -412,11 +530,9 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:bg-white"
                   />
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">
                     Nível de Inglês
                   </label>
                   <select
@@ -429,51 +545,251 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                     ))}
                   </select>
                 </div>
-
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                    Valor Hora/Aula (R$)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="5"
-                    value={editingStudent.hourlyRate || 120}
-                    onChange={(e) => setEditingStudent({ ...editingStudent, hourlyRate: Number(e.target.value) })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:bg-white"
-                  />
-                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                  Horários Padrões de Aula
+              {/* CAIXA: MODELO DE COBRANÇA */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                <label className="block text-xs font-bold uppercase text-slate-700 tracking-wider flex items-center gap-1.5">
+                  <DollarSign size={16} className="text-emerald-600" />
+                  Modelo de Cobrança *
                 </label>
-                <input
-                  type="text"
-                  placeholder="Ex: Segundas e Quartas às 10:00"
-                  value={editingStudent.defaultSchedule || ''}
-                  onChange={(e) => setEditingStudent({ ...editingStudent, defaultSchedule: e.target.value })}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:bg-white"
-                />
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Opção: Mensalidade Fixa */}
+                  <label 
+                    onClick={() => setEditingStudent({ 
+                      ...editingStudent, 
+                      billingModel: 'MENSALIDADE_FIXA',
+                      billingAmount: editingStudent.billingAmount || 480
+                    })}
+                    className={`p-3.5 rounded-xl border-2 flex flex-col justify-between cursor-pointer transition-all ${
+                      editingStudent.billingModel === 'MENSALIDADE_FIXA'
+                        ? 'border-emerald-500 bg-emerald-50/50 shadow-xs'
+                        : 'border-slate-200 bg-white hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-bold text-slate-800 text-sm">Mensalidade Fixa</span>
+                      <input
+                        type="radio"
+                        name="billingModel"
+                        checked={editingStudent.billingModel === 'MENSALIDADE_FIXA'}
+                        onChange={() => {}}
+                        className="text-emerald-600 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded w-fit">
+                      Vencimento todo dia 10
+                    </span>
+                    <p className="text-xs text-slate-500 mt-2">
+                      Cobrança em valor fixo mensal independentemente da quantidade de aulas daquele mês.
+                    </p>
+                  </label>
+
+                  {/* Opção: Por Hora */}
+                  <label 
+                    onClick={() => setEditingStudent({ 
+                      ...editingStudent, 
+                      billingModel: 'POR_HORA',
+                      billingAmount: editingStudent.billingAmount || 120
+                    })}
+                    className={`p-3.5 rounded-xl border-2 flex flex-col justify-between cursor-pointer transition-all ${
+                      editingStudent.billingModel === 'POR_HORA'
+                        ? 'border-blue-500 bg-blue-50/50 shadow-xs'
+                        : 'border-slate-200 bg-white hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-bold text-slate-800 text-sm">Por hora</span>
+                      <input
+                        type="radio"
+                        name="billingModel"
+                        checked={editingStudent.billingModel === 'POR_HORA'}
+                        onChange={() => {}}
+                        className="text-blue-600 focus:ring-blue-500"
+                      />
+                    </div>
+                    <span className="text-[11px] font-semibold text-blue-700 bg-blue-100/70 px-2 py-0.5 rounded w-fit">
+                      Aluno paga sempre depois da aula
+                    </span>
+                    <p className="text-xs text-slate-500 mt-2">
+                      Calculado multiplicando a quantidade de aulas dadas pelo valor de cada hora/aula.
+                    </p>
+                  </label>
+                </div>
+
+                {/* Input do Valor */}
+                <div className="pt-2">
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    {editingStudent.billingModel === 'MENSALIDADE_FIXA' 
+                      ? 'Valor da Mensalidade Fixa (R$ / mês)' 
+                      : 'Valor por Hora de Aula (R$ / hora)'}
+                  </label>
+                  <div className="relative w-full sm:w-60">
+                    <span className="absolute left-3 top-2.5 text-sm text-slate-400 font-semibold">R$</span>
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      step="10"
+                      value={editingStudent.billingAmount || ''}
+                      onChange={(e) => setEditingStudent({ ...editingStudent, billingAmount: Number(e.target.value) })}
+                      className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+              {/* CAIXA: AGENDA PADRÃO (RECORRÊNCIA) */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold uppercase text-slate-700 tracking-wider flex items-center gap-1.5">
+                    <Calendar size={16} className="text-blue-600" />
+                    Agenda Padrão (Recorrência Semanal)
+                  </label>
+                  
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="hasRecurringSchedule"
+                      checked={!!editingStudent.hasRecurringSchedule}
+                      onChange={(e) => setEditingStudent({ 
+                        ...editingStudent, 
+                        hasRecurringSchedule: e.target.checked 
+                      })}
+                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                    />
+                    <label htmlFor="hasRecurringSchedule" className="text-xs font-semibold text-slate-700 cursor-pointer">
+                      Possui horários fixos na semana
+                    </label>
+                  </div>
+                </div>
+
+                {editingStudent.hasRecurringSchedule ? (
+                  <div className="space-y-3 pt-2">
+                    <p className="text-xs text-slate-500">
+                      Adicione os dias e horários fixos das aulas. Ao salvar, as próximas aulas do mês já aparecerão na Agenda e Diário de Aulas:
+                    </p>
+
+                    {/* Slots List */}
+                    <div className="space-y-2">
+                      {(editingStudent.recurringSlots || []).map((slot, index) => (
+                        <div key={index} className="flex flex-wrap items-center gap-2 bg-white p-2.5 rounded-lg border border-slate-200 shadow-2xs">
+                          {/* Dia da Semana */}
+                          <div className="flex-1 min-w-[140px]">
+                            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-0.5">Dia</label>
+                            <select
+                              value={slot.dayOfWeek}
+                              onChange={(e) => handleUpdateSlot(index, 'dayOfWeek', Number(e.target.value))}
+                              className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs font-semibold text-slate-800"
+                            >
+                              {DAYS_OF_WEEK.map(d => (
+                                <option key={d.value} value={d.value}>{d.label}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Horário */}
+                          <div className="w-28">
+                            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-0.5">Horário</label>
+                            <input
+                              type="time"
+                              required
+                              value={slot.time}
+                              onChange={(e) => handleUpdateSlot(index, 'time', e.target.value)}
+                              className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs font-semibold text-slate-800"
+                            />
+                          </div>
+
+                          {/* Duração */}
+                          <div className="w-32">
+                            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-0.5">Duração</label>
+                            <select
+                              value={slot.durationMinutes}
+                              onChange={(e) => handleUpdateSlot(index, 'durationMinutes', Number(e.target.value))}
+                              className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs font-semibold text-slate-800"
+                            >
+                              <option value={30}>30 min</option>
+                              <option value={45}>45 min</option>
+                              <option value={50}>50 min</option>
+                              <option value={60}>60 min (1h)</option>
+                              <option value={90}>90 min (1h30)</option>
+                              <option value={120}>120 min (2h)</option>
+                            </select>
+                          </div>
+
+                          {/* Botão Remover Slot */}
+                          <div className="pt-4">
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveSlot(index)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                              title="Remover horário"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleAddSlot}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 text-blue-600 border border-blue-200 rounded-lg text-xs font-semibold transition-colors"
+                    >
+                      <Plus size={14} />
+                      Adicionar outro dia/horário na semana
+                    </button>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-white rounded-lg border border-slate-200 text-xs text-slate-500">
+                    <span className="font-semibold text-slate-700">Aluno sem agenda padrão:</span> As aulas serão marcadas manualmente na Agenda pela professora conforme a demanda do aluno.
+                  </div>
+                )}
+              </div>
+
+              {/* LINKS EXTERNOS (STUDY PLANNER & CLASS PLAN) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                    Endereço / Local (se presencial)
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1 flex items-center gap-1">
+                    <LinkIcon size={13} className="text-purple-600" />
+                    Link do Study Planner (Google Docs / Notion)
                   </label>
                   <input
-                    type="text"
-                    placeholder="Bairro / Rua ou Online"
-                    value={editingStudent.address || ''}
-                    onChange={(e) => setEditingStudent({ ...editingStudent, address: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:bg-white"
+                    type="url"
+                    placeholder="https://docs.google.com/..."
+                    value={editingStudent.studyPlannerUrl || ''}
+                    onChange={(e) => setEditingStudent({ ...editingStudent, studyPlannerUrl: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-purple-500 focus:bg-white"
                   />
+                  <span className="text-[11px] text-slate-400 block mt-0.5">
+                    O botão na lista de alunos abrirá este link em nova aba.
+                  </span>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1 flex items-center gap-1">
+                    <LinkIcon size={13} className="text-blue-600" />
+                    Link do Class Plan (Notion / Drive)
+                  </label>
+                  <input
+                    type="url"
+                    placeholder="https://notion.so/..."
+                    value={editingStudent.classPlanUrl || ''}
+                    onChange={(e) => setEditingStudent({ ...editingStudent, classPlanUrl: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:bg-white"
+                  />
+                  <span className="text-[11px] text-slate-400 block mt-0.5">
+                    O botão na lista de alunos abrirá este link em nova aba.
+                  </span>
+                </div>
+              </div>
+
+              {/* Status e Observações */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">
                     Status da Matrícula
                   </label>
                   <select
@@ -485,19 +801,19 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                     <option value="inactive">Inativo (Pausado)</option>
                   </select>
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                  Notas / Histórico do Aluno
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Objetivos específicos, dificuldades com pronúncia, etc..."
-                  value={editingStudent.notes || ''}
-                  onChange={(e) => setEditingStudent({ ...editingStudent, notes: e.target.value })}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:bg-white"
-                />
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">
+                    Observações / Metas
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Foco em pronúncia e entrevistas"
+                    value={editingStudent.notes || ''}
+                    onChange={(e) => setEditingStudent({ ...editingStudent, notes: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:bg-white"
+                  />
+                </div>
               </div>
 
               <div className="pt-3 flex items-center justify-end gap-3 border-t border-slate-100">
@@ -521,7 +837,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
         </div>
       )}
 
-      {/* MODAL 2: STUDY PLANNER */}
+      {/* MODAL 2: STUDY PLANNER (Fallback se aluno não tiver link externo configurado) */}
       {isStudyPlannerOpen && currentStudyPlanner && activePlannerStudent && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-xl space-y-4 max-h-[90vh] overflow-y-auto animate-fade-in">
@@ -566,7 +882,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="Ex: Destravar a fala para entrevistas de emprego em empresas internacionais..."
+                  placeholder="Ex: Destravar a fala para reuniões corporativas..."
                   value={currentStudyPlanner.learningGoals}
                   onChange={(e) => setCurrentStudyPlanner({ ...currentStudyPlanner, learningGoals: e.target.value })}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-purple-500 focus:bg-white"
@@ -579,7 +895,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="Ex: BBC Learning English, Série Ted Talks com legenda em inglês, Anki Flashcards..."
+                  placeholder="Ex: BBC Learning English, Anki Flashcards, Podcast 6 Minute English..."
                   value={currentStudyPlanner.recommendedMaterials}
                   onChange={(e) => setCurrentStudyPlanner({ ...currentStudyPlanner, recommendedMaterials: e.target.value })}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-purple-500 focus:bg-white"
@@ -592,22 +908,9 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="Ex: Segundas e Quartas: 20 min de vocabulário. Sábados: assistir a 1 episódio de podcast."
+                  placeholder="Ex: 15 min diários de vocabulário + 1 episódio de podcast..."
                   value={currentStudyPlanner.weeklyRoutine}
                   onChange={(e) => setCurrentStudyPlanner({ ...currentStudyPlanner, weeklyRoutine: e.target.value })}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-purple-500 focus:bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                  Dicas e Orientações da Professora
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Dicas personalizadas..."
-                  value={currentStudyPlanner.notes}
-                  onChange={(e) => setCurrentStudyPlanner({ ...currentStudyPlanner, notes: e.target.value })}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-purple-500 focus:bg-white"
                 />
               </div>
@@ -618,14 +921,14 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                   onClick={() => setIsStudyPlannerOpen(false)}
                   className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
                 >
-                  Cancelar
+                  Fechar
                 </button>
                 <button
                   type="submit"
                   className="flex items-center gap-1.5 px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold rounded-lg shadow-sm"
                 >
                   <Save size={16} />
-                  Salvar Study Planner
+                  Salvar
                 </button>
               </div>
             </form>
@@ -633,7 +936,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
         </div>
       )}
 
-      {/* MODAL 3: CLASS PLAN */}
+      {/* MODAL 3: CLASS PLAN (Fallback se aluno não tiver link externo configurado) */}
       {isClassPlanOpen && currentClassPlan && activePlanStudent && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-xl space-y-4 max-h-[90vh] overflow-y-auto animate-fade-in">
@@ -677,22 +980,9 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                 </label>
                 <input
                   type="text"
-                  placeholder="Ex: Future with 'will' vs 'going to'; Conditional sentences"
+                  placeholder="Ex: Present Simple vs Present Continuous"
                   value={currentClassPlan.grammarTopics}
                   onChange={(e) => setCurrentClassPlan({ ...currentClassPlan, grammarTopics: e.target.value })}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                  Foco em Vocabulário & Expressões
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ex: Airport vocabulary, idioms for traveling, hotel booking dialogues"
-                  value={currentClassPlan.vocabularyTopics}
-                  onChange={(e) => setCurrentClassPlan({ ...currentClassPlan, vocabularyTopics: e.target.value })}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:bg-white"
                 />
               </div>
@@ -703,22 +993,9 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="Ex: Exercícios 1 a 3 da pág. 45 e redigir e-mail formal..."
+                  placeholder="Ex: Exercícios da pág. 45..."
                   value={currentClassPlan.homework}
                   onChange={(e) => setCurrentClassPlan({ ...currentClassPlan, homework: e.target.value })}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                  Objetivos da Próxima Aula
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Ex: Simular uma reunião de negócios e praticar speaking com fluência..."
-                  value={currentClassPlan.nextClassObjectives}
-                  onChange={(e) => setCurrentClassPlan({ ...currentClassPlan, nextClassObjectives: e.target.value })}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:bg-white"
                 />
               </div>
@@ -729,14 +1006,14 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                   onClick={() => setIsClassPlanOpen(false)}
                   className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
                 >
-                  Cancelar
+                  Fechar
                 </button>
                 <button
                   type="submit"
                   className="flex items-center gap-1.5 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg shadow-sm"
                 >
                   <Save size={16} />
-                  Salvar Class Plan
+                  Salvar
                 </button>
               </div>
             </form>

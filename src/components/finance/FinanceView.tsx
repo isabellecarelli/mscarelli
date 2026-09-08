@@ -5,140 +5,131 @@ import {
   CreditCard, 
   CheckCircle, 
   Clock, 
-  Plus, 
-  Edit2, 
-  Save, 
-  X,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  Info,
   Check
 } from 'lucide-react';
-import { Student, FinanceRecord } from '../../types';
+import { Student, Lesson, LessonStatus } from '../../types';
 import { db } from '../../services/db';
 
 interface FinanceViewProps {
   students: Student[];
+  lessons: Lesson[];
 }
 
-export const FinanceView: React.FC<FinanceViewProps> = ({ students }) => {
-  const [records, setRecords] = useState<FinanceRecord[]>(() => db.getFinanceRecords());
-  const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
-  const [editFormData, setEditFormData] = useState<Partial<FinanceRecord>>({});
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [newRecordData, setNewRecordData] = useState<Partial<FinanceRecord>>({
-    month: new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
-    hourlyRate: 120,
-    classesCount: 4,
-    status: 'Pendente',
-    notes: 'Mensalidade'
+export const FinanceView: React.FC<FinanceViewProps> = ({ students, lessons }) => {
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [payments, setPayments] = useState<Record<string, { status: 'Pago' | 'Pendente'; paymentDate?: string }>>(() => db.getPayments());
+
+  const navigateMonth = (direction: number) => {
+    const next = new Date(selectedDate);
+    next.setMonth(next.getMonth() + direction);
+    setSelectedDate(next);
+  };
+
+  const monthName = selectedDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  const selectedYear = selectedDate.getFullYear();
+  const selectedMonth = selectedDate.getMonth();
+
+  // Filter lessons for the selected month
+  const monthLessons = lessons.filter(l => {
+    const d = new Date(l.date);
+    return d.getFullYear() === selectedYear && d.getMonth() === selectedMonth;
   });
 
-  const activeStudents = students.filter(s => s.isActive);
+  // Calculate finance rows dynamically based on Agenda lessons and Student billing models
+  const financeRows = students.map(student => {
+    const studentMonthLessons = monthLessons.filter(l => l.studentId === student.id);
+    
+    // Aulas válidas (realizadas ou agendadas ou canceladas com cobrança)
+    const billableLessons = studentMonthLessons.filter(l => l.status !== LessonStatus.CANCELLED_FREE);
+    const completedLessons = studentMonthLessons.filter(l => l.status === LessonStatus.COMPLETED);
+    const scheduledLessons = studentMonthLessons.filter(l => l.status === LessonStatus.SCHEDULED);
 
-  // Sync records with students if any new active student was added
-  React.useEffect(() => {
-    db.syncFinanceWithStudents(students);
-    setRecords(db.getFinanceRecords());
-  }, [students]);
+    const classesCount = billableLessons.length;
 
-  // Calculations
-  const totalForecast = records.reduce((acc, r) => acc + (r.totalAmount || (r.hourlyRate * r.classesCount)), 0);
-  const totalReceived = records
-    .filter(r => r.status === 'Pago')
-    .reduce((acc, r) => acc + (r.totalAmount || (r.hourlyRate * r.classesCount)), 0);
+    let totalAmount = 0;
+    let dueDateText = '';
+
+    if (student.billingModel === 'MENSALIDADE_FIXA') {
+      // Mensalidade Fixa: vencimento sempre dia 10
+      totalAmount = student.billingAmount;
+      dueDateText = 'Todo dia 10';
+    } else {
+      // Por hora: soma das aulas válidas no mês * valor por hora
+      totalAmount = classesCount * student.billingAmount;
+      dueDateText = 'Pós-aula (avulso)';
+    }
+
+    const paymentKey = `${student.id}-${selectedYear}-${selectedMonth}`;
+    const paymentInfo = payments[paymentKey] || { status: 'Pendente' };
+
+    return {
+      student,
+      classesCount,
+      completedCount: completedLessons.length,
+      scheduledCount: scheduledLessons.length,
+      billingModel: student.billingModel,
+      billingAmount: student.billingAmount,
+      totalAmount,
+      dueDateText,
+      status: paymentInfo.status,
+      paymentDate: paymentInfo.paymentDate,
+      paymentKey
+    };
+  });
+
+  // KPIs
+  const totalForecast = financeRows.reduce((acc, row) => acc + row.totalAmount, 0);
+  const totalReceived = financeRows
+    .filter(row => row.status === 'Pago')
+    .reduce((acc, row) => acc + row.totalAmount, 0);
   const totalPending = totalForecast - totalReceived;
+  const paidCount = financeRows.filter(row => row.status === 'Pago').length;
+  const totalMonthLessonsCount = monthLessons.filter(l => l.status !== LessonStatus.CANCELLED_FREE).length;
 
-  const paidCount = records.filter(r => r.status === 'Pago').length;
-
-  const handleToggleStatus = (record: FinanceRecord) => {
-    const newStatus = record.status === 'Pago' ? 'Pendente' : 'Pago';
-    const updatedRecord: FinanceRecord = {
-      ...record,
-      status: newStatus,
-      paymentDate: newStatus === 'Pago' ? new Date().toLocaleDateString('pt-BR') : undefined
-    };
-    const updated = db.saveFinanceRecord(updatedRecord);
-    setRecords(updated);
-  };
-
-  const handleStartEdit = (record: FinanceRecord) => {
-    setEditingRecordId(record.id);
-    setEditFormData({ ...record });
-  };
-
-  const handleSaveInlineEdit = (id: string) => {
-    const existing = records.find(r => r.id === id);
-    if (!existing) return;
-
-    const rate = Number(editFormData.hourlyRate) || existing.hourlyRate;
-    const count = Number(editFormData.classesCount) || existing.classesCount;
-
-    const updatedRecord: FinanceRecord = {
-      ...existing,
-      hourlyRate: rate,
-      classesCount: count,
-      totalAmount: rate * count,
-      notes: editFormData.notes !== undefined ? editFormData.notes : existing.notes
-    };
-
-    const updated = db.saveFinanceRecord(updatedRecord);
-    setRecords(updated);
-    setEditingRecordId(null);
-  };
-
-  const handleCreateNewRecord = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newRecordData.studentId) return;
-
-    const rate = Number(newRecordData.hourlyRate) || 120;
-    const count = Number(newRecordData.classesCount) || 4;
-
-    const recordToSave: FinanceRecord = {
-      id: `fin-${Date.now()}`,
-      studentId: newRecordData.studentId,
-      month: newRecordData.month || new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
-      hourlyRate: rate,
-      classesCount: count,
-      totalAmount: rate * count,
-      status: (newRecordData.status as 'Pago' | 'Pendente') || 'Pendente',
-      notes: newRecordData.notes || 'Mensalidade',
-      paymentDate: newRecordData.status === 'Pago' ? new Date().toLocaleDateString('pt-BR') : undefined
-    };
-
-    const updated = db.saveFinanceRecord(recordToSave);
-    setRecords(updated);
-    setIsAddModalOpen(false);
+  const handleTogglePaymentStatus = (paymentKey: string, currentStatus: 'Pago' | 'Pendente') => {
+    const newStatus = currentStatus === 'Pago' ? 'Pendente' : 'Pago';
+    db.savePaymentStatus(paymentKey, newStatus);
+    setPayments(db.getPayments());
   };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Header with Month Navigator */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
-            <DollarSign size={28} className="text-blue-600" />
+            <DollarSign size={28} className="text-emerald-600" />
             Controle Financeiro
           </h2>
           <p className="text-slate-500 text-sm mt-1">
-            Faturamento, mensalidades de inglês e demonstrativo editável por aluno
+            Cálculo dinâmico baseado nas aulas da Agenda e modelos de cobrança dos alunos
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            setNewRecordData({
-              studentId: students[0]?.id || '',
-              month: new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
-              hourlyRate: 120,
-              classesCount: 4,
-              status: 'Pendente',
-              notes: 'Mensalidade'
-            });
-            setIsAddModalOpen(true);
-          }}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors self-start sm:self-auto"
-        >
-          <Plus size={18} />
-          Adicionar Cobrança
-        </button>
+        {/* Month Picker */}
+        <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-xs self-start sm:self-auto">
+          <button
+            onClick={() => navigateMonth(-1)}
+            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors"
+            title="Mês anterior"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <span className="text-sm font-bold text-slate-800 capitalize min-w-[140px] text-center">
+            {monthName}
+          </span>
+          <button
+            onClick={() => navigateMonth(1)}
+            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors"
+            title="Próximo mês"
+          >
+            <ChevronRight size={18} />
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -154,7 +145,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ students }) => {
               R$ {totalReceived.toFixed(2).replace('.', ',')}
             </p>
             <p className="text-xs text-emerald-600 font-semibold mt-0.5">
-              {paidCount} mensalidades pagas
+              {paidCount} de {financeRows.length} pagamentos realizados
             </p>
           </div>
         </div>
@@ -165,12 +156,12 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ students }) => {
             <DollarSign size={28} />
           </div>
           <div>
-            <p className="text-sm text-slate-500 font-medium">Previsão Total do Mês</p>
+            <p className="text-sm text-slate-500 font-medium">Faturamento Previsto no Mês</p>
             <p className="text-2xl font-bold text-slate-800">
               R$ {totalForecast.toFixed(2).replace('.', ',')}
             </p>
             <p className="text-xs text-slate-400 mt-0.5">
-              Baseado no valor e aulas combinadas
+              {totalMonthLessonsCount} aulas no total em {monthName}
             </p>
           </div>
         </div>
@@ -186,28 +177,28 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ students }) => {
               R$ {totalPending.toFixed(2).replace('.', ',')}
             </p>
             <p className="text-xs text-slate-400 mt-0.5">
-              {records.length - paidCount} mensalidades aguardando
+              {financeRows.length - paidCount} pendências aguardando
             </p>
           </div>
         </div>
       </div>
 
-      {/* Demonstrativo Financeiro 100% Editável */}
+      {/* Tabela do Demonstrativo Financeiro */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+        <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h3 className="font-bold text-slate-800 text-base">
-              Demonstrativo por Aluno (100% Editável)
+              Demonstrativo por Aluno em {monthName}
             </h3>
             <p className="text-xs text-slate-400">
-              Clique no botão de status para alternar entre "Pago" e "Pendente", ou no lápis para alterar valores.
+              Calculado automaticamente a partir das aulas agendadas/realizadas na Agenda. Clique no status para alternar entre "Pago" e "Pendente".
             </p>
           </div>
         </div>
 
-        {records.length === 0 ? (
-          <div className="p-8 text-center text-slate-400 text-sm">
-            Nenhum registro financeiro cadastrado. Cadastre alunos para gerar a previsão.
+        {financeRows.length === 0 ? (
+          <div className="p-12 text-center text-slate-400 text-sm">
+            Nenhum aluno cadastrado para exibir o financeiro. Cadastre alunos na aba "Alunos".
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -215,81 +206,75 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ students }) => {
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/75 text-[11px] font-bold uppercase text-slate-500 tracking-wider">
                   <th className="py-3.5 px-4">Aluno</th>
-                  <th className="py-3.5 px-4">Mês de Referência</th>
-                  <th className="py-3.5 px-4">Valor Hora/Aula</th>
-                  <th className="py-3.5 px-4">Aulas / Mês</th>
-                  <th className="py-3.5 px-4">Total Devido</th>
+                  <th className="py-3.5 px-4">Modelo de Cobrança</th>
+                  <th className="py-3.5 px-4">Vencimento</th>
+                  <th className="py-3.5 px-4">Aulas no Mês</th>
+                  <th className="py-3.5 px-4">Valor Base</th>
+                  <th className="py-3.5 px-4 font-bold text-slate-700">Total a Pagar</th>
                   <th className="py-3.5 px-4 text-center">Status Pagamento</th>
-                  <th className="py-3.5 px-4 text-right">Ação</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm">
-                {records.map((record) => {
-                  const student = students.find(s => s.id === record.studentId);
-                  const isEditing = editingRecordId === record.id;
-                  const isPaid = record.status === 'Pago';
-                  const total = record.totalAmount || (record.hourlyRate * record.classesCount);
+                {financeRows.map((row) => {
+                  const isFixed = row.billingModel === 'MENSALIDADE_FIXA';
+                  const isPaid = row.status === 'Pago';
 
                   return (
-                    <tr key={record.id} className="hover:bg-slate-50/70 transition-colors">
+                    <tr key={row.student.id} className="hover:bg-slate-50/70 transition-colors">
                       {/* Aluno */}
-                      <td className="py-3.5 px-4 font-bold text-slate-800">
-                        {student?.name || 'Aluno Excluído'}
-                      </td>
-
-                      {/* Mês */}
-                      <td className="py-3.5 px-4 text-slate-600 font-medium capitalize">
-                        {record.month}
-                      </td>
-
-                      {/* Valor Hora/Aula */}
                       <td className="py-3.5 px-4">
-                        {isEditing ? (
-                          <div className="flex items-center gap-1">
-                            <span className="text-xs text-slate-400">R$</span>
-                            <input
-                              type="number"
-                              className="w-20 px-2 py-1 bg-white border border-slate-300 rounded text-xs text-slate-800 focus:ring-1 focus:ring-blue-500"
-                              value={editFormData.hourlyRate || ''}
-                              onChange={(e) => setEditFormData({ ...editFormData, hourlyRate: Number(e.target.value) })}
-                            />
-                          </div>
+                        <div className="font-bold text-slate-800">{row.student.name}</div>
+                        <span className="text-[11px] text-slate-400">{row.student.level}</span>
+                      </td>
+
+                      {/* Modelo */}
+                      <td className="py-3.5 px-4">
+                        {isFixed ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            Mensalidade Fixa
+                          </span>
                         ) : (
-                          <span className="font-semibold text-slate-700">
-                            R$ {record.hourlyRate.toFixed(2)}
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                            Por hora
                           </span>
                         )}
+                      </td>
+
+                      {/* Vencimento */}
+                      <td className="py-3.5 px-4 font-medium text-slate-600">
+                        {row.dueDateText}
                       </td>
 
                       {/* Aulas no Mês */}
                       <td className="py-3.5 px-4">
-                        {isEditing ? (
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="number"
-                              className="w-16 px-2 py-1 bg-white border border-slate-300 rounded text-xs text-slate-800 focus:ring-1 focus:ring-blue-500"
-                              value={editFormData.classesCount || ''}
-                              onChange={(e) => setEditFormData({ ...editFormData, classesCount: Number(e.target.value) })}
-                            />
-                            <span className="text-xs text-slate-400">aulas</span>
-                          </div>
+                        <div className="flex items-center gap-1.5 text-slate-800 font-semibold text-xs">
+                          <Calendar size={13} className="text-slate-400" />
+                          <span>{row.classesCount} aulas</span>
+                        </div>
+                        <span className="text-[11px] text-slate-400 block mt-0.5">
+                          {row.completedCount} realizadas • {row.scheduledCount} agendadas
+                        </span>
+                      </td>
+
+                      {/* Valor Base */}
+                      <td className="py-3.5 px-4 font-medium text-slate-600">
+                        {isFixed ? (
+                          <span>R$ {row.billingAmount.toFixed(2)}/mês</span>
                         ) : (
-                          <span className="text-slate-600">
-                            {record.classesCount} aulas
-                          </span>
+                          <span>R$ {row.billingAmount.toFixed(2)}/hora</span>
                         )}
                       </td>
 
                       {/* Total Devido */}
-                      <td className="py-3.5 px-4 font-bold text-slate-900">
-                        R$ {total.toFixed(2).replace('.', ',')}
+                      <td className="py-3.5 px-4 font-bold text-slate-900 text-base">
+                        R$ {row.totalAmount.toFixed(2).replace('.', ',')}
                       </td>
 
-                      {/* Status Pagamento (Click to Toggle) */}
+                      {/* Status Pagamento (Clicável com Toggle) */}
                       <td className="py-3.5 px-4 text-center">
                         <button
-                          onClick={() => handleToggleStatus(record)}
-                          className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold cursor-pointer transition-all hover:scale-105 shadow-2xs ${
+                          onClick={() => handleTogglePaymentStatus(row.paymentKey, row.status as 'Pago' | 'Pendente')}
+                          className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold cursor-pointer transition-all hover:scale-105 shadow-2xs ${
                             isPaid
                               ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800'
                               : 'bg-amber-100 hover:bg-amber-200 text-amber-800'
@@ -297,38 +282,8 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ students }) => {
                           title="Clique para alternar entre Pago e Pendente"
                         >
                           {isPaid ? <CheckCircle size={14} /> : <Clock size={14} />}
-                          <span>{record.status}</span>
+                          <span>{row.status}</span>
                         </button>
-                      </td>
-
-                      {/* Ações (Inline Edit) */}
-                      <td className="py-3.5 px-4 text-right">
-                        {isEditing ? (
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              onClick={() => handleSaveInlineEdit(record.id)}
-                              className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors"
-                              title="Salvar valores"
-                            >
-                              <Save size={14} />
-                            </button>
-                            <button
-                              onClick={() => setEditingRecordId(null)}
-                              className="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg transition-colors"
-                              title="Cancelar edição"
-                            >
-                              <X size={14} />
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => handleStartEdit(record)}
-                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="Editar valores e horas deste aluno"
-                          >
-                            <Edit2 size={16} />
-                          </button>
-                        )}
                       </td>
                     </tr>
                   );
@@ -338,128 +293,6 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ students }) => {
           </div>
         )}
       </div>
-
-      {/* MODAL: Adicionar Cobrança / Mensalidade Manual */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4 animate-fade-in">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <DollarSign size={20} className="text-blue-600" />
-                Nova Cobrança / Mensalidade
-              </h3>
-              <button
-                onClick={() => setIsAddModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateNewRecord} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                  Aluno
-                </label>
-                <select
-                  required
-                  value={newRecordData.studentId || ''}
-                  onChange={(e) => {
-                    const st = students.find(s => s.id === e.target.value);
-                    setNewRecordData({
-                      ...newRecordData,
-                      studentId: e.target.value,
-                      hourlyRate: st?.hourlyRate || 120
-                    });
-                  }}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:bg-white"
-                >
-                  <option value="">Selecione o aluno...</option>
-                  {students.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                    Mês de Referência
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ex: Outubro 2026"
-                    value={newRecordData.month || ''}
-                    onChange={(e) => setNewRecordData({ ...newRecordData, month: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:bg-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                    Valor por Hora (R$)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="5"
-                    value={newRecordData.hourlyRate || 120}
-                    onChange={(e) => setNewRecordData({ ...newRecordData, hourlyRate: Number(e.target.value) })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:bg-white"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                    Quantidade de Aulas
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={newRecordData.classesCount || 4}
-                    onChange={(e) => setNewRecordData({ ...newRecordData, classesCount: Number(e.target.value) })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:bg-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                    Status Inicial
-                  </label>
-                  <select
-                    value={newRecordData.status || 'Pendente'}
-                    onChange={(e) => setNewRecordData({ ...newRecordData, status: e.target.value as 'Pago' | 'Pendente' })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:bg-white"
-                  >
-                    <option value="Pendente">Pendente</option>
-                    <option value="Pago">Pago</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="pt-3 flex items-center justify-end gap-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg shadow-sm"
-                >
-                  <Check size={16} />
-                  Salvar Cobrança
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
